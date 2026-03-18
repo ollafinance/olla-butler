@@ -9,6 +9,15 @@ export {
 } from "./olla-abis.js";
 
 export {
+  OllaCoreEventAbi,
+  OllaVaultEventAbi,
+  SafetyModuleEventAbi,
+  StakingManagerEventAbi,
+  WithdrawalQueueEventAbi,
+  RewardsAccumulatorEventAbi,
+} from "./event-abis.js";
+
+export {
   RebalanceStep,
   RebalanceStepNames,
   type AccountingState,
@@ -23,4 +32,5 @@ export {
   type SafetyModuleData,
   type WithdrawalQueueData,
   type ContractAddresses,
+  type EventData,
 } from "./protocol-state.js";

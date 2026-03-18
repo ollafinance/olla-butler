@@ -87,17 +87,6 @@ export const initStakingMetrics = () => {
     }
   });
 
-  const stakingStateWithdrawableGauge = createObservableGauge("staking_state_withdrawable_amount", {
-    description: "Staking state: total in exit state, now exitable",
-  });
-  stakingStateWithdrawableGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.stakingData) {
-        result.observe(Number(state.stakingData.stakingState.withdrawableAmount) / WEI_DIVISOR, { network });
-      }
-    }
-  });
-
   const stakingStateSlashingGauge = createObservableGauge("staking_state_slashing_delta", {
     description: "Staking state: cumulative slashing delta from rollup",
   });

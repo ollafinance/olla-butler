@@ -124,7 +124,6 @@ export const StakingManagerAbi = [
           { name: "slashingDelta", type: "uint256" },
           { name: "stakedAmount", type: "uint256" },
           { name: "pendingUnstakeAmount", type: "uint256" },
-          { name: "withdrawableAmount", type: "uint256" },
         ],
       },
     ],

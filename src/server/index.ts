@@ -7,6 +7,9 @@ import {
   initStakingMetrics,
   initSafetyMetrics,
   initWithdrawalQueueMetrics,
+  initEventMetrics,
+  initDerivedMetrics,
+  initScraperHealthMetrics,
   getMetricsRegistry,
 } from "./metrics/index.js";
 import {
@@ -16,6 +19,7 @@ import {
   StakingScraper,
   SafetyModuleScraper,
   WithdrawalQueueScraper,
+  EventWatcher,
 } from "./scrapers/index.js";
 import { initNetworkState, updateContractAddresses } from "./state/index.js";
 import { OllaProtocolClient } from "../core/components/OllaProtocolClient.js";
@@ -64,6 +68,9 @@ async function initializeNetwork(
 
   const withdrawalQueueScraper = new WithdrawalQueueScraper(network, protocolClient);
   scraperManager.register(withdrawalQueueScraper, 30_000); // 30s
+
+  const eventWatcher = new EventWatcher(network, protocolClient.getPublicClient(), addresses);
+  scraperManager.register(eventWatcher, 12_000); // 12s — near-realtime event monitoring
 
   console.log(`[${network}] Network initialization complete`);
 }
@@ -130,6 +137,9 @@ export const startServer = async (specificNetwork?: string) => {
   initStakingMetrics();
   initSafetyMetrics();
   initWithdrawalQueueMetrics();
+  initEventMetrics();
+  initDerivedMetrics();
+  initScraperHealthMetrics();
 
   const scraperManager = new ScraperManager();
 

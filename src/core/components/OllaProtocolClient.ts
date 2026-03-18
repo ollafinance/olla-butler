@@ -7,7 +7,7 @@ import {
   type GetContractReturnType,
   type PublicClient,
 } from "viem";
-import { mainnet, sepolia } from "viem/chains";
+import { foundry, mainnet, sepolia } from "viem/chains";
 import {
   OllaCoreAbi,
   OllaVaultAbi,
@@ -26,7 +26,7 @@ import {
   RebalanceStep,
 } from "../../types/index.js";
 
-const SUPPORTED_CHAINS = [sepolia, mainnet];
+const SUPPORTED_CHAINS = [sepolia, mainnet, foundry];
 
 type OllaCoreContract = GetContractReturnType<typeof OllaCoreAbi, PublicClient>;
 type OllaVaultContract = GetContractReturnType<typeof OllaVaultAbi, PublicClient>;
@@ -167,6 +167,10 @@ export class OllaProtocolClient {
     return this.addresses;
   }
 
+  getPublicClient(): PublicClient {
+    return this.client;
+  }
+
   async scrapeCoreData(): Promise<CoreData> {
     const [totalAssets, exchangeRate, protocolFeeBP, treasuryFeeSplitBP, targetBufferedAssets, rebalanceCooldown, accountingState, latestReport, rebalanceProgress, flowCounters] =
       await Promise.all([
@@ -271,7 +275,6 @@ export class OllaProtocolClient {
         slashingDelta: stakingState.slashingDelta,
         stakedAmount: stakingState.stakedAmount,
         pendingUnstakeAmount: stakingState.pendingUnstakeAmount,
-        withdrawableAmount: stakingState.withdrawableAmount,
       },
       providerConfig: {
         admin: providerConfig.admin,

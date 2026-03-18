@@ -17,6 +17,7 @@ import type {
   SafetyModuleData,
   WithdrawalQueueData,
   ContractAddresses,
+  EventData,
 } from "../../types/index.js";
 
 export type NetworkState = {
@@ -26,6 +27,9 @@ export type NetworkState = {
   safetyModuleData: SafetyModuleData | null;
   withdrawalQueueData: WithdrawalQueueData | null;
   contractAddresses: ContractAddresses | null;
+  eventData: EventData | null;
+  previousExchangeRate: bigint | null;
+  previousExchangeRateTimestamp: Date | null;
 };
 
 const networkStates = new Map<string, NetworkState>();
@@ -40,6 +44,9 @@ const getNetworkState = (network: string): NetworkState => {
       safetyModuleData: null,
       withdrawalQueueData: null,
       contractAddresses: null,
+      eventData: null,
+      previousExchangeRate: null,
+      previousExchangeRateTimestamp: null,
     };
     networkStates.set(network, state);
   }
@@ -58,6 +65,11 @@ export const initNetworkState = (network: string) => {
 // Core data
 export const updateCoreData = (network: string, data: CoreData) => {
   const state = getNetworkState(network);
+  // Snapshot previous exchange rate before overwriting
+  if (state.coreData) {
+    state.previousExchangeRate = state.coreData.exchangeRate;
+    state.previousExchangeRateTimestamp = state.coreData.lastUpdated;
+  }
   state.coreData = data;
 };
 
@@ -113,4 +125,14 @@ export const updateContractAddresses = (network: string, addresses: ContractAddr
 
 export const getContractAddresses = (network: string): ContractAddresses | null => {
   return getNetworkState(network).contractAddresses;
+};
+
+// Event data
+export const updateEventData = (network: string, data: EventData) => {
+  const state = getNetworkState(network);
+  state.eventData = data;
+};
+
+export const getEventData = (network: string): EventData | null => {
+  return getNetworkState(network).eventData;
 };

@@ -55,7 +55,6 @@ export type StakingState = {
   slashingDelta: bigint;
   stakedAmount: bigint;
   pendingUnstakeAmount: bigint;
-  withdrawableAmount: bigint;
 };
 
 export type ProviderConfig = {
@@ -127,4 +126,39 @@ export type ContractAddresses = {
   withdrawalQueue: string;
   stakingProviderRegistry: string;
   asset: string;
+};
+
+export type EventData = {
+  lastProcessedBlock: bigint;
+  // Critical safety
+  circuitBreakerTriggeredCount: number;
+  circuitBreakerByReason: { rateDrop: number; queueRatio: number; accountingStale: number };
+  negativeRewardsPeriodCount: number;
+  safetyPausedCount: number;
+  safetyUnpausedCount: number;
+  // User flows
+  depositCount: number;
+  depositVolume: bigint;
+  redeemRequestCount: number;
+  redeemRequestVolume: bigint;
+  instantRedemptionCount: number;
+  instantRedemptionVolume: bigint;
+  instantRedemptionFees: bigint;
+  withdrawalClaimCount: number;
+  withdrawalClaimVolume: bigint;
+  // Operations
+  rebalanceCount: number;
+  accountingUpdateCount: number;
+  rewardsHarvestedVolume: bigint;
+  // Staking
+  stakedCount: number;
+  stakedVolume: bigint;
+  unstakeInitiatedCount: number;
+  unstakeInitiatedVolume: bigint;
+  unstakeFinalizedCount: number;
+  unstakeFinalizedVolume: bigint;
+  // Other
+  withdrawalAdjustedCount: number;
+  configChangeCount: number;
+  lastUpdated: Date;
 };

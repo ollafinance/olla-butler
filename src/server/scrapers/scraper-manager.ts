@@ -1,4 +1,5 @@
 import type { BaseScraper } from "./base-scraper.js";
+import { recordScrapeSuccess, recordScrapeError } from "../state/scraper-health.js";
 
 export interface ScraperConfig {
   scraper: BaseScraper;
@@ -69,24 +70,32 @@ export class ScraperManager {
       }
 
       // Run immediately on start
-      try {
-        console.log(
-          `  - Running initial scrape for ${scraper.name} [${scraper.network}]...`,
-        );
-        await scraper.scrape();
-      } catch (error) {
-        console.error(
-          `  Initial scrape failed for ${scraper.name} [${scraper.network}]:`,
-          error,
-        );
+      {
+        const start = performance.now();
+        try {
+          console.log(
+            `  - Running initial scrape for ${scraper.name} [${scraper.network}]...`,
+          );
+          await scraper.scrape();
+          recordScrapeSuccess(scraper.name, scraper.network, performance.now() - start);
+        } catch (error) {
+          recordScrapeError(scraper.name, scraper.network, performance.now() - start);
+          console.error(
+            `  Initial scrape failed for ${scraper.name} [${scraper.network}]:`,
+            error,
+          );
+        }
       }
 
       // Schedule periodic scraping
       const handle = setInterval(() => {
         void (async () => {
+          const start = performance.now();
           try {
             await scraper.scrape();
+            recordScrapeSuccess(scraper.name, scraper.network, performance.now() - start);
           } catch (error) {
+            recordScrapeError(scraper.name, scraper.network, performance.now() - start);
             console.error(
               `Error in ${scraper.name} scraper [${scraper.network}]:`,
               error,
