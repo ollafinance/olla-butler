@@ -1,0 +1,116 @@
+/**
+ * State module - in-memory state management for scraped protocol data.
+ *
+ * Manages per-network state for:
+ * - Core data (TVL, exchange rate, accounting, rebalance)
+ * - Vault data (buffered assets, withdrawals, stAztec supply)
+ * - Staking data (attester counts, staking state, key queue)
+ * - Safety module data (pause state, deposit cap)
+ * - Withdrawal queue data (pending requests)
+ * - Contract addresses (discovered from core)
+ */
+
+import type {
+  CoreData,
+  VaultData,
+  StakingData,
+  SafetyModuleData,
+  WithdrawalQueueData,
+  ContractAddresses,
+} from "../../types/index.js";
+
+export type NetworkState = {
+  coreData: CoreData | null;
+  vaultData: VaultData | null;
+  stakingData: StakingData | null;
+  safetyModuleData: SafetyModuleData | null;
+  withdrawalQueueData: WithdrawalQueueData | null;
+  contractAddresses: ContractAddresses | null;
+};
+
+const networkStates = new Map<string, NetworkState>();
+
+const getNetworkState = (network: string): NetworkState => {
+  let state = networkStates.get(network);
+  if (!state) {
+    state = {
+      coreData: null,
+      vaultData: null,
+      stakingData: null,
+      safetyModuleData: null,
+      withdrawalQueueData: null,
+      contractAddresses: null,
+    };
+    networkStates.set(network, state);
+  }
+  return state;
+};
+
+export const getAllNetworkStates = (): ReadonlyMap<string, NetworkState> => {
+  return networkStates;
+};
+
+export const initNetworkState = (network: string) => {
+  console.log(`[State] Initializing state for network: ${network}`);
+  getNetworkState(network);
+};
+
+// Core data
+export const updateCoreData = (network: string, data: CoreData) => {
+  const state = getNetworkState(network);
+  state.coreData = data;
+};
+
+export const getCoreData = (network: string): CoreData | null => {
+  return getNetworkState(network).coreData;
+};
+
+// Vault data
+export const updateVaultData = (network: string, data: VaultData) => {
+  const state = getNetworkState(network);
+  state.vaultData = data;
+};
+
+export const getVaultData = (network: string): VaultData | null => {
+  return getNetworkState(network).vaultData;
+};
+
+// Staking data
+export const updateStakingData = (network: string, data: StakingData) => {
+  const state = getNetworkState(network);
+  state.stakingData = data;
+};
+
+export const getStakingData = (network: string): StakingData | null => {
+  return getNetworkState(network).stakingData;
+};
+
+// Safety module data
+export const updateSafetyModuleData = (network: string, data: SafetyModuleData) => {
+  const state = getNetworkState(network);
+  state.safetyModuleData = data;
+};
+
+export const getSafetyModuleData = (network: string): SafetyModuleData | null => {
+  return getNetworkState(network).safetyModuleData;
+};
+
+// Withdrawal queue data
+export const updateWithdrawalQueueData = (network: string, data: WithdrawalQueueData) => {
+  const state = getNetworkState(network);
+  state.withdrawalQueueData = data;
+};
+
+export const getWithdrawalQueueData = (network: string): WithdrawalQueueData | null => {
+  return getNetworkState(network).withdrawalQueueData;
+};
+
+// Contract addresses
+export const updateContractAddresses = (network: string, addresses: ContractAddresses) => {
+  const state = getNetworkState(network);
+  state.contractAddresses = addresses;
+};
+
+export const getContractAddresses = (network: string): ContractAddresses | null => {
+  return getNetworkState(network).contractAddresses;
+};
