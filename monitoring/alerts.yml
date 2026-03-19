@@ -1,0 +1,159 @@
+groups:
+  - name: olla-butler
+    rules:
+      # ── Critical ──────────────────────────────────────────────
+
+      - alert: OllaCircuitBreakerTriggered
+        expr: increase(olla_butler_circuit_breaker_triggered_count[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker triggered on {{ $labels.network }}"
+          description: "A circuit breaker event was detected. The safety module may have paused deposits. Check the circuit_breaker_by_reason metrics for details."
+
+      - alert: OllaSlashingDetected
+        expr: increase(olla_butler_negative_rewards_period_count[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Slashing detected on {{ $labels.network }}"
+          description: "A NegativeRewardsPeriod event indicates validator slashing or negative rewards. Investigate validator health immediately."
+
+      - alert: OllaSafetyModulePaused
+        expr: olla_butler_safety_module_paused == 1
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Safety module is paused on {{ $labels.network }}"
+          description: "The safety module is currently paused, blocking all deposits. This may be triggered by a circuit breaker or manual intervention."
+
+      - alert: OllaExchangeRateDrop
+        expr: olla_butler_exchange_rate_change_bps < -10
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Exchange rate dropped >10 bps on {{ $labels.network }}"
+          description: "The stAztec/AZTEC exchange rate dropped by {{ $value }} bps between scrapes. This may indicate slashing or an accounting error."
+
+      - alert: OllaAttesterSlashed
+        expr: olla_butler_attester_slashing_loss > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Attester {{ $labels.attester }} slashed on {{ $labels.network }}"
+          description: "Attester {{ $labels.attester }} has a slashing loss of {{ $value }} tokens. Call refreshAttesterState() to sync Olla's cached state."
+
+      - alert: OllaAttesterZombie
+        expr: olla_butler_rollup_attester_zombie_count > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value }} zombie attester(s) detected on {{ $labels.network }}"
+          description: "One or more attesters are in ZOMBIE status (slashed, not validating). Investigate and refresh attester state."
+
+      # ── Warning ───────────────────────────────────────────────
+
+      - alert: OllaRebalanceOverdue
+        expr: olla_butler_rebalance_overdue == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rebalance is overdue on {{ $labels.network }}"
+          description: "The rebalance cooldown has elapsed but the rebalance step is not Done. The rebalancer bot may be stuck or offline."
+
+      - alert: OllaAccountingStale
+        expr: olla_butler_accounting_staleness_seconds > 86400
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Accounting is stale on {{ $labels.network }}"
+          description: "No accounting update in over 24 hours. The accounting bot or rebalancer may be offline."
+
+      - alert: OllaBufferLow
+        expr: olla_butler_buffer_utilization_pct < 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Buffer utilization below 20% on {{ $labels.network }}"
+          description: "Buffered assets are at {{ $value }}% of target. Instant redemptions may fail and withdrawal queue may grow."
+
+      - alert: OllaScraperDown
+        expr: olla_butler_scraper_up == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scraper {{ $labels.scraper }} is down on {{ $labels.network }}"
+          description: "The {{ $labels.scraper }} scraper has been failing for 5+ minutes. Metrics may be stale."
+
+      - alert: OllaScraperErrors
+        expr: olla_butler_scraper_consecutive_errors > 5
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scraper {{ $labels.scraper }} has {{ $value }} consecutive errors on {{ $labels.network }}"
+          description: "The scraper has failed {{ $value }} times in a row. Check RPC connectivity and contract state."
+
+      - alert: OllaRpcUnreachable
+        expr: olla_butler_rpc_reachable == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RPC unreachable for {{ $labels.network }}"
+          description: "No scraper has succeeded recently for this network. All metrics are stale."
+
+      - alert: OllaKeyQueueLow
+        expr: olla_butler_key_queue_to_attester_ratio < 0.5
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Key queue running low on {{ $labels.network }}"
+          description: "Key queue to attester ratio is {{ $value }}. New attester keys may need to be provisioned soon."
+
+      - alert: OllaAttesterRefreshNeeded
+        expr: olla_butler_attester_refresh_needed_count > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} attester(s) need refresh on {{ $labels.network }}"
+          description: "Attesters have stale cached state for 5+ minutes. Call refreshAttesterState() to sync with rollup."
+
+      - alert: OllaAttesterExitExitable
+        expr: olla_butler_attester_exitable_count > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} attester exit(s) ready to finalize on {{ $labels.network }}"
+          description: "Attester exits have passed the delay period but haven't been finalized for 10+ minutes. Call refreshAttesterState() to finalize."
+
+      - alert: OllaAttesterStateDrift
+        expr: olla_butler_attester_cached_vs_rollup_drift > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Attester state drift detected on {{ $labels.network }}"
+          description: "StakingManager cached balance differs from rollup by {{ $value }} tokens for 5+ minutes. refreshAttesterState() may be needed."
+
+      - alert: OllaAttesterStale
+        expr: olla_butler_attester_stale == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Attester {{ $labels.attester }} stale ({{ $labels.reason }}) on {{ $labels.network }}"
+          description: "Attester {{ $labels.attester }} has stale state (reason: {{ $labels.reason }}) for 5+ minutes."
