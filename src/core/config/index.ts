@@ -81,6 +81,11 @@ function buildConfig(network: string) {
       z.coerce.number().int().positive(),
       process.env.METRICS_PORT || "9470",
     ),
+    ATTESTER_SCAN_START_BLOCK: parseConfigField(
+      "ATTESTER_SCAN_START_BLOCK",
+      z.coerce.number().int().nonnegative().optional(),
+      process.env.ATTESTER_SCAN_START_BLOCK || undefined,
+    ),
   };
 }
 

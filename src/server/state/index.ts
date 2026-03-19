@@ -18,6 +18,7 @@ import type {
   WithdrawalQueueData,
   ContractAddresses,
   EventData,
+  AttesterData,
 } from "../../types/index.js";
 
 export type NetworkState = {
@@ -28,6 +29,7 @@ export type NetworkState = {
   withdrawalQueueData: WithdrawalQueueData | null;
   contractAddresses: ContractAddresses | null;
   eventData: EventData | null;
+  attesterData: AttesterData | null;
   previousExchangeRate: bigint | null;
   previousExchangeRateTimestamp: Date | null;
 };
@@ -45,6 +47,7 @@ const getNetworkState = (network: string): NetworkState => {
       withdrawalQueueData: null,
       contractAddresses: null,
       eventData: null,
+      attesterData: null,
       previousExchangeRate: null,
       previousExchangeRateTimestamp: null,
     };
@@ -135,4 +138,14 @@ export const updateEventData = (network: string, data: EventData) => {
 
 export const getEventData = (network: string): EventData | null => {
   return getNetworkState(network).eventData;
+};
+
+// Attester data
+export const updateAttesterData = (network: string, data: AttesterData) => {
+  const state = getNetworkState(network);
+  state.attesterData = data;
+};
+
+export const getAttesterData = (network: string): AttesterData | null => {
+  return getNetworkState(network).attesterData;
 };

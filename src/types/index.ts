@@ -20,6 +20,8 @@ export {
 export {
   RebalanceStep,
   RebalanceStepNames,
+  AztecAttesterStatus,
+  AztecAttesterStatusNames,
   type AccountingState,
   type LatestReport,
   type RebalanceProgress,
@@ -33,4 +35,14 @@ export {
   type WithdrawalQueueData,
   type ContractAddresses,
   type EventData,
+  type AttesterExitState,
+  type AttesterState,
+  type AttesterStalenessReason,
+  type StaleAttester,
+  type AttesterData,
 } from "./protocol-state.js";
+
+export {
+  AztecRollupRegistryAbi,
+  AztecRollupAbi,
+} from "./aztec-abis.js";

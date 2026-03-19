@@ -12,6 +12,11 @@ vi.mock("../../state/index.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../../state/attester-registry.js", () => ({
+  addAttester: vi.fn(),
+  removeAttester: vi.fn(),
+}));
+
 const mockAddresses: ContractAddresses = {
   core: "0x0000000000000000000000000000000000000001",
   vault: "0x0000000000000000000000000000000000000002",
@@ -22,6 +27,8 @@ const mockAddresses: ContractAddresses = {
   withdrawalQueue: "0x0000000000000000000000000000000000000007",
   stakingProviderRegistry: "0x0000000000000000000000000000000000000008",
   asset: "0x0000000000000000000000000000000000000009",
+  rollupRegistry: "0x000000000000000000000000000000000000000a",
+  canonicalRollup: "0x000000000000000000000000000000000000000b",
 };
 
 function createMockClient(overrides: {

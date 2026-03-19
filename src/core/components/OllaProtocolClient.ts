@@ -16,6 +16,9 @@ import {
   SafetyModuleAbi,
   WithdrawalQueueAbi,
   ERC20Abi,
+  AztecRollupRegistryAbi,
+  AztecRollupAbi,
+  AztecAttesterStatus,
   type ContractAddresses,
   type CoreData,
   type VaultData,
@@ -23,6 +26,7 @@ import {
   type SafetyModuleData,
   type WithdrawalQueueData,
   type RebalanceProgress,
+  type AttesterState,
   RebalanceStep,
 } from "../../types/index.js";
 
@@ -35,6 +39,8 @@ type StakingProviderRegistryContract = GetContractReturnType<typeof StakingProvi
 type SafetyModuleContract = GetContractReturnType<typeof SafetyModuleAbi, PublicClient>;
 type WithdrawalQueueContract = GetContractReturnType<typeof WithdrawalQueueAbi, PublicClient>;
 type ERC20Contract = GetContractReturnType<typeof ERC20Abi, PublicClient>;
+type AztecRollupRegistryContract = GetContractReturnType<typeof AztecRollupRegistryAbi, PublicClient>;
+type AztecRollupContract = GetContractReturnType<typeof AztecRollupAbi, PublicClient>;
 
 export interface OllaProtocolClientConfig {
   rpcUrl: string;
@@ -57,8 +63,11 @@ export class OllaProtocolClient {
   private safetyModuleContract!: SafetyModuleContract;
   private withdrawalQueueContract!: WithdrawalQueueContract;
   private stAztecContract!: ERC20Contract;
+  private rollupRegistryContract!: AztecRollupRegistryContract;
+  private canonicalRollupContract!: AztecRollupContract;
 
   private addresses: ContractAddresses | null = null;
+  private historicalRollupContracts: AztecRollupContract[] = [];
 
   constructor(config: OllaProtocolClientConfig) {
     this.config = config;
@@ -113,7 +122,39 @@ export class OllaProtocolClient {
       client: this.client,
     });
 
-    const stakingProviderRegistryAddr = await this.stakingManagerContract.read.stakingProviderRegistry();
+    const [stakingProviderRegistryAddr, rollupRegistryAddr] = await Promise.all([
+      this.stakingManagerContract.read.stakingProviderRegistry(),
+      this.stakingManagerContract.read.rollupRegistry(),
+    ]);
+
+    // Initialize rollup registry and discover canonical rollup
+    this.rollupRegistryContract = getContract({
+      address: getAddress(rollupRegistryAddr),
+      abi: AztecRollupRegistryAbi,
+      client: this.client,
+    });
+
+    const canonicalRollupAddr = await this.rollupRegistryContract.read.getCanonicalRollup();
+
+    this.canonicalRollupContract = getContract({
+      address: getAddress(canonicalRollupAddr),
+      abi: AztecRollupAbi,
+      client: this.client,
+    });
+
+    // Discover all historical rollup versions for exiting attester queries
+    const numVersions = await this.rollupRegistryContract.read.numberOfVersions();
+    this.historicalRollupContracts = [];
+    for (let i = 0n; i < numVersions; i++) {
+      const version = await this.rollupRegistryContract.read.getVersion([i]);
+      const rollupAddr = await this.rollupRegistryContract.read.getRollup([version]);
+      const addr = getAddress(rollupAddr);
+      if (addr.toLowerCase() !== getAddress(canonicalRollupAddr).toLowerCase()) {
+        this.historicalRollupContracts.push(
+          getContract({ address: addr, abi: AztecRollupAbi, client: this.client }),
+        );
+      }
+    }
 
     // Initialize remaining contracts
     this.stakingProviderRegistryContract = getContract({
@@ -150,6 +191,8 @@ export class OllaProtocolClient {
       withdrawalQueue: withdrawalQueueAddr,
       stakingProviderRegistry: stakingProviderRegistryAddr,
       asset: assetAddr,
+      rollupRegistry: rollupRegistryAddr,
+      canonicalRollup: canonicalRollupAddr,
     };
 
     console.log(`[OllaProtocolClient] Contract addresses discovered:`);
@@ -316,5 +359,71 @@ export class OllaProtocolClient {
       nextUnfinalized,
       lastUpdated: new Date(),
     };
+  }
+
+  async scrapeActivationThreshold(): Promise<bigint> {
+    return this.canonicalRollupContract.read.getActivationThreshold();
+  }
+
+  /**
+   * Queries the Aztec rollup for attester state.
+   * Tries the canonical rollup first; for attesters showing NONE status,
+   * falls back to historical rollup versions (for exiting attesters on old rollups).
+   */
+  async scrapeAttesterStates(attesterAddresses: string[]): Promise<AttesterState[]> {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+
+    const results = await Promise.all(
+      attesterAddresses.map(async (addr): Promise<AttesterState> => {
+        const address = getAddress(addr) as Address;
+        let view = await this.canonicalRollupContract.read.getAttesterView([address]);
+
+        // If NONE on canonical, try historical rollups (attester may be exiting on old rollup)
+        if (view.status === AztecAttesterStatus.NONE && this.historicalRollupContracts.length > 0) {
+          for (const historicalRollup of this.historicalRollupContracts) {
+            const historicalView = await historicalRollup.read.getAttesterView([address]);
+            if (historicalView.status !== AztecAttesterStatus.NONE) {
+              view = historicalView;
+              break;
+            }
+          }
+        }
+
+        return {
+          address: addr.toLowerCase(),
+          status: view.status as AztecAttesterStatus,
+          effectiveBalance: view.effectiveBalance,
+          exit: {
+            exists: view.exit.exists,
+            amount: view.exit.amount,
+            exitableAt: view.exit.exitableAt,
+            isExitable: view.exit.exists && view.exit.exitableAt <= now,
+          },
+        };
+      }),
+    );
+
+    return results;
+  }
+
+  /**
+   * Refreshes the canonical rollup address from the registry.
+   * Should be called periodically to handle rollup upgrades.
+   */
+  async refreshCanonicalRollup(): Promise<void> {
+    const canonicalRollupAddr = await this.rollupRegistryContract.read.getCanonicalRollup();
+    const newAddr = getAddress(canonicalRollupAddr);
+
+    if (this.addresses && newAddr.toLowerCase() !== this.addresses.canonicalRollup.toLowerCase()) {
+      console.log(
+        `[OllaProtocolClient] Canonical rollup changed: ${this.addresses.canonicalRollup} → ${newAddr}`,
+      );
+      this.addresses.canonicalRollup = newAddr;
+      this.canonicalRollupContract = getContract({
+        address: newAddr,
+        abi: AztecRollupAbi,
+        client: this.client,
+      });
+    }
   }
 }

@@ -10,6 +10,7 @@ import {
   initEventMetrics,
   initDerivedMetrics,
   initScraperHealthMetrics,
+  initAttesterMetrics,
   getMetricsRegistry,
 } from "./metrics/index.js";
 import {
@@ -20,8 +21,10 @@ import {
   SafetyModuleScraper,
   WithdrawalQueueScraper,
   EventWatcher,
+  AttesterScraper,
 } from "./scrapers/index.js";
 import { initNetworkState, updateContractAddresses } from "./state/index.js";
+import { initAttesterRegistry } from "./state/attester-registry.js";
 import { OllaProtocolClient } from "../core/components/OllaProtocolClient.js";
 import type { Address } from "viem";
 
@@ -71,6 +74,22 @@ async function initializeNetwork(
 
   const eventWatcher = new EventWatcher(network, protocolClient.getPublicClient(), addresses);
   scraperManager.register(eventWatcher, 12_000); // 12s — near-realtime event monitoring
+
+  // Attester monitoring (opt-in via ATTESTER_SCAN_START_BLOCK)
+  if (config.ATTESTER_SCAN_START_BLOCK !== undefined) {
+    console.log(`[${network}] Initializing attester registry from block ${config.ATTESTER_SCAN_START_BLOCK}...`);
+    await initAttesterRegistry(
+      network,
+      protocolClient.getPublicClient(),
+      addresses.stakingManager as Address,
+      BigInt(config.ATTESTER_SCAN_START_BLOCK),
+    );
+
+    const attesterScraper = new AttesterScraper(network, protocolClient);
+    scraperManager.register(attesterScraper, 60_000); // 60s
+  } else {
+    console.log(`[${network}] Attester monitoring disabled (ATTESTER_SCAN_START_BLOCK not set)`);
+  }
 
   console.log(`[${network}] Network initialization complete`);
 }
@@ -139,6 +158,7 @@ export const startServer = async (specificNetwork?: string) => {
   initWithdrawalQueueMetrics();
   initEventMetrics();
   initDerivedMetrics();
+  initAttesterMetrics();
   initScraperHealthMetrics();
 
   const scraperManager = new ScraperManager();

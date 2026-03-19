@@ -126,6 +126,62 @@ export type ContractAddresses = {
   withdrawalQueue: string;
   stakingProviderRegistry: string;
   asset: string;
+  rollupRegistry: string;
+  canonicalRollup: string;
+};
+
+export enum AztecAttesterStatus {
+  NONE = 0,
+  VALIDATING = 1,
+  ZOMBIE = 2,
+  EXITING = 3,
+}
+
+export const AztecAttesterStatusNames: Record<AztecAttesterStatus, string> = {
+  [AztecAttesterStatus.NONE]: "None",
+  [AztecAttesterStatus.VALIDATING]: "Validating",
+  [AztecAttesterStatus.ZOMBIE]: "Zombie",
+  [AztecAttesterStatus.EXITING]: "Exiting",
+};
+
+export type AttesterExitState = {
+  exists: boolean;
+  amount: bigint;
+  exitableAt: bigint;
+  isExitable: boolean;
+};
+
+export type AttesterState = {
+  address: string;
+  status: AztecAttesterStatus;
+  effectiveBalance: bigint;
+  exit: AttesterExitState;
+};
+
+export type AttesterStalenessReason =
+  | "slashing"
+  | "exit_undetected"
+  | "exit_exitable"
+  | "zombie"
+  | "fully_exited";
+
+export type StaleAttester = {
+  address: string;
+  reasons: AttesterStalenessReason[];
+  slashingLoss: bigint;
+};
+
+export type AttesterData = {
+  attesters: AttesterState[];
+  rollupTotalEffectiveBalance: bigint;
+  rollupActiveCount: number;
+  rollupExitingCount: number;
+  rollupZombieCount: number;
+  activationThreshold: bigint;
+  cachedVsRollupBalanceDrift: bigint;
+  staleAttesters: StaleAttester[];
+  exitableAttesterCount: number;
+  lastUpdated: Date;
 };
 
 export type EventData = {
@@ -157,6 +213,9 @@ export type EventData = {
   unstakeInitiatedVolume: bigint;
   unstakeFinalizedCount: number;
   unstakeFinalizedVolume: bigint;
+  // Attester refresh
+  attesterRefreshCount: number;
+  attesterRefreshBalanceChangeCount: number;
   // Other
   withdrawalAdjustedCount: number;
   configChangeCount: number;

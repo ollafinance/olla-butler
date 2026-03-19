@@ -12,3 +12,4 @@ export { initWithdrawalQueueMetrics } from "./withdrawal-queue-metrics.js";
 export { initEventMetrics } from "./event-metrics.js";
 export { initDerivedMetrics } from "./derived-metrics.js";
 export { initScraperHealthMetrics } from "./scraper-health-metrics.js";
+export { initAttesterMetrics } from "./attester-metrics.js";

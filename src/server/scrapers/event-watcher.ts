@@ -10,6 +10,7 @@ import {
   RewardsAccumulatorEventAbi,
 } from "../../types/index.js";
 import { updateEventData } from "../state/index.js";
+import { addAttester, removeAttester } from "../state/attester-registry.js";
 
 const BREAKER_REASONS = ["RateDrop", "QueueRatio", "AccountingStale"] as const;
 const MAX_BLOCK_RANGE = 10_000n;
@@ -40,6 +41,8 @@ function createEmptyEventData(): EventData {
     unstakeInitiatedVolume: 0n,
     unstakeFinalizedCount: 0,
     unstakeFinalizedVolume: 0n,
+    attesterRefreshCount: 0,
+    attesterRefreshBalanceChangeCount: 0,
     withdrawalAdjustedCount: 0,
     configChangeCount: 0,
     lastUpdated: new Date(),
@@ -267,6 +270,7 @@ export class EventWatcher extends AbstractScraper {
           case "StakedWithProvider":
             this.eventData.stakedCount++;
             this.eventData.stakedVolume += log.args.amount;
+            addAttester(this.network, log.args.attester);
             break;
           case "UnstakeInitiated":
             this.eventData.unstakeInitiatedCount++;
@@ -279,6 +283,20 @@ export class EventWatcher extends AbstractScraper {
           case "RewardsHarvested":
             this.eventData.rewardsHarvestedVolume += log.args.amount;
             break;
+          case "AttesterRemoved":
+            removeAttester(this.network, log.args.attester);
+            break;
+          case "AttesterStateRefreshed": {
+            this.eventData.attesterRefreshCount++;
+            const args = log.args as { attester: string; oldBalance: bigint; newBalance: bigint };
+            if (args.oldBalance !== args.newBalance) {
+              this.eventData.attesterRefreshBalanceChangeCount++;
+              console.log(
+                `[${this.name}/${this.network}] AttesterStateRefreshed: ${args.attester} balance ${args.oldBalance} → ${args.newBalance} at block ${log.blockNumber}`,
+              );
+            }
+            break;
+          }
         }
       }
     } else {

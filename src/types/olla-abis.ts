@@ -113,6 +113,7 @@ export const StakingManagerAbi = [
   { type: "function", name: "hasExitableUnstakes", inputs: [], outputs: [{ type: "bool" }], stateMutability: "view" },
   { type: "function", name: "core", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
   { type: "function", name: "stakingProviderRegistry", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
+  { type: "function", name: "rollupRegistry", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
   {
     type: "function",
     name: "getStakingState",
