@@ -26,6 +26,12 @@ import {
 import { initNetworkState, updateContractAddresses } from "./state/index.js";
 import { initAttesterRegistry } from "./state/attester-registry.js";
 import { OllaProtocolClient } from "../core/components/OllaProtocolClient.js";
+import {
+  TransactionExecutor,
+  AttesterRefreshTask,
+  AccountingUpdateTask,
+  RebalanceTask,
+} from "./executor/index.js";
 import type { Address } from "viem";
 
 let logCounter = 0;
@@ -89,6 +95,38 @@ async function initializeNetwork(
     scraperManager.register(attesterScraper, 60_000); // 60s
   } else {
     console.log(`[${network}] Attester monitoring disabled (ATTESTER_SCAN_START_BLOCK not set)`);
+  }
+
+  // Transaction executor (opt-in via TX_EXECUTOR_ENABLED + BUTLER_PRIVATE_KEY)
+  if (config.TX_EXECUTOR_ENABLED && config.BUTLER_PRIVATE_KEY) {
+    console.log(`[${network}] Initializing transaction executor...`);
+    const txExecutor = new TransactionExecutor({
+      rpcUrl: config.ETHEREUM_NODE_URL,
+      chainId: config.ETHEREUM_CHAIN_ID,
+      privateKey: config.BUTLER_PRIVATE_KEY,
+      addresses,
+    });
+    console.log(`[${network}] Executor address: ${txExecutor.getExecutorAddress()}`);
+
+    // Attester refresh: check every 60s, only executes when stale attesters detected
+    if (config.ATTESTER_SCAN_START_BLOCK !== undefined) {
+      const attesterRefreshTask = new AttesterRefreshTask(network, txExecutor);
+      scraperManager.register(attesterRefreshTask, 60_000);
+    }
+
+    // Accounting update: check every 5 minutes, only executes when stale (>4h)
+    const accountingTask = new AccountingUpdateTask(network, txExecutor);
+    scraperManager.register(accountingTask, 5 * 60_000);
+
+    // Rebalance: check every 30 minutes, only executes when cooldown has elapsed
+    const rebalanceTask = new RebalanceTask(network, txExecutor);
+    scraperManager.register(rebalanceTask, 30 * 60_000);
+
+    console.log(`[${network}] Transaction executor tasks registered`);
+  } else if (config.TX_EXECUTOR_ENABLED && !config.BUTLER_PRIVATE_KEY) {
+    console.warn(`[${network}] TX_EXECUTOR_ENABLED is true but BUTLER_PRIVATE_KEY is not set — executor disabled`);
+  } else {
+    console.log(`[${network}] Transaction executor disabled (TX_EXECUTOR_ENABLED not set)`);
   }
 
   console.log(`[${network}] Network initialization complete`);

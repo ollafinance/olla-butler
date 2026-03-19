@@ -11,6 +11,7 @@ const packageName =
 
 const SENSITIVE_CONFIG_KEYS = new Set([
   "METRICS_BEARER_TOKEN",
+  "BUTLER_PRIVATE_KEY",
 ]);
 
 export const PACKAGE_VERSION = packageVersion;
@@ -85,6 +86,16 @@ function buildConfig(network: string) {
       "ATTESTER_SCAN_START_BLOCK",
       z.coerce.number().int().nonnegative().optional(),
       process.env.ATTESTER_SCAN_START_BLOCK || undefined,
+    ),
+    TX_EXECUTOR_ENABLED: parseConfigField(
+      "TX_EXECUTOR_ENABLED",
+      z.enum(["true", "false"]).transform((v) => v === "true").optional(),
+      process.env.TX_EXECUTOR_ENABLED || undefined,
+    ),
+    BUTLER_PRIVATE_KEY: parseConfigField(
+      "BUTLER_PRIVATE_KEY",
+      z.string().startsWith("0x").optional(),
+      process.env.BUTLER_PRIVATE_KEY || undefined,
     ),
   };
 }

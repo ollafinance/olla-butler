@@ -46,3 +46,8 @@ export {
   AztecRollupRegistryAbi,
   AztecRollupAbi,
 } from "./aztec-abis.js";
+
+export {
+  OllaCoreWriteAbi,
+  StakingManagerWriteAbi,
+} from "./write-abis.js";
