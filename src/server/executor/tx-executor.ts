@@ -6,7 +6,6 @@
 import {
   createWalletClient,
   createPublicClient,
-  http,
   getAddress,
   type Address,
   type WalletClient,
@@ -16,6 +15,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry, mainnet, sepolia } from "viem/chains";
+import { createTransport } from "../../core/components/transport.js";
 import { OllaCoreWriteAbi, StakingManagerWriteAbi } from "../../types/write-abis.js";
 import type { ContractAddresses } from "../../types/index.js";
 
@@ -47,15 +47,17 @@ export class TransactionExecutor {
     this.account = account;
     this.executorAddress = account.address;
 
+    const transport = createTransport(config.rpcUrl);
+
     this.walletClient = createWalletClient({
       account,
       chain,
-      transport: http(config.rpcUrl),
+      transport,
     });
 
     this.publicClient = createPublicClient({
       chain,
-      transport: http(config.rpcUrl),
+      transport,
     });
 
     this.addresses = config.addresses;

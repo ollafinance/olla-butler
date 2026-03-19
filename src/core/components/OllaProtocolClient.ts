@@ -2,12 +2,12 @@ import {
   createPublicClient,
   getAddress,
   getContract,
-  http,
   type Address,
   type GetContractReturnType,
   type PublicClient,
 } from "viem";
 import { foundry, mainnet, sepolia } from "viem/chains";
+import { createTransport } from "./transport.js";
 import {
   OllaCoreAbi,
   OllaVaultAbi,
@@ -77,7 +77,7 @@ export class OllaProtocolClient {
     }
 
     this.client = createPublicClient({
-      transport: http(config.rpcUrl),
+      transport: createTransport(config.rpcUrl),
       chain,
     });
   }
