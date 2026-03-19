@@ -216,6 +216,11 @@ export type EventData = {
   // Attester refresh
   attesterRefreshCount: number;
   attesterRefreshBalanceChangeCount: number;
+  // Withdrawal queue
+  withdrawalRequestedCount: number;
+  withdrawalRequestedVolume: bigint;
+  withdrawalFinalizedCount: number;
+  withdrawalFinalizedVolume: bigint;
   // Other
   withdrawalAdjustedCount: number;
   configChangeCount: number;

@@ -43,6 +43,10 @@ function createEmptyEventData(): EventData {
     unstakeFinalizedVolume: 0n,
     attesterRefreshCount: 0,
     attesterRefreshBalanceChangeCount: 0,
+    withdrawalRequestedCount: 0,
+    withdrawalRequestedVolume: 0n,
+    withdrawalFinalizedCount: 0,
+    withdrawalFinalizedVolume: 0n,
     withdrawalAdjustedCount: 0,
     configChangeCount: 0,
     lastUpdated: new Date(),
@@ -311,6 +315,14 @@ export class EventWatcher extends AbstractScraper {
       totalEvents += wqResult.value.length;
       for (const log of wqResult.value) {
         switch (log.eventName) {
+          case "WithdrawalRequested":
+            this.eventData.withdrawalRequestedCount++;
+            this.eventData.withdrawalRequestedVolume += log.args.assetsExpected;
+            break;
+          case "WithdrawalFinalized":
+            this.eventData.withdrawalFinalizedCount++;
+            this.eventData.withdrawalFinalizedVolume += log.args.assets;
+            break;
           case "WithdrawalAdjusted":
             this.eventData.withdrawalAdjustedCount++;
             console.warn(

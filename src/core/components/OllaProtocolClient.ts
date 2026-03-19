@@ -143,17 +143,22 @@ export class OllaProtocolClient {
     });
 
     // Discover all historical rollup versions for exiting attester queries
-    const numVersions = await this.rollupRegistryContract.read.numberOfVersions();
+    // Mock rollup registries may not implement numberOfVersions(), so handle gracefully
     this.historicalRollupContracts = [];
-    for (let i = 0n; i < numVersions; i++) {
-      const version = await this.rollupRegistryContract.read.getVersion([i]);
-      const rollupAddr = await this.rollupRegistryContract.read.getRollup([version]);
-      const addr = getAddress(rollupAddr);
-      if (addr.toLowerCase() !== getAddress(canonicalRollupAddr).toLowerCase()) {
-        this.historicalRollupContracts.push(
-          getContract({ address: addr, abi: AztecRollupAbi, client: this.client }),
-        );
+    try {
+      const numVersions = await this.rollupRegistryContract.read.numberOfVersions();
+      for (let i = 0n; i < numVersions; i++) {
+        const version = await this.rollupRegistryContract.read.getVersion([i]);
+        const rollupAddr = await this.rollupRegistryContract.read.getRollup([version]);
+        const addr = getAddress(rollupAddr);
+        if (addr.toLowerCase() !== getAddress(canonicalRollupAddr).toLowerCase()) {
+          this.historicalRollupContracts.push(
+            getContract({ address: addr, abi: AztecRollupAbi, client: this.client }),
+          );
+        }
       }
+    } catch {
+      console.warn(`[OllaProtocolClient] Could not discover historical rollup versions (mock registry?). Skipping.`);
     }
 
     // Initialize remaining contracts

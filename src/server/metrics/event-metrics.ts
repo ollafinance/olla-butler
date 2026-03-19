@@ -142,6 +142,28 @@ export const initEventMetrics = () => {
     (d) => Number(d.unstakeFinalizedVolume) / WEI_DIVISOR,
   );
 
+  // -- Withdrawal queue --
+  eventGauge(
+    "withdrawal_requested_event_count",
+    "Total WithdrawalRequested events",
+    (d) => d.withdrawalRequestedCount,
+  );
+  eventGauge(
+    "withdrawal_requested_event_volume",
+    "Cumulative withdrawal requested volume (token units)",
+    (d) => Number(d.withdrawalRequestedVolume) / WEI_DIVISOR,
+  );
+  eventGauge(
+    "withdrawal_finalized_event_count",
+    "Total WithdrawalFinalized events",
+    (d) => d.withdrawalFinalizedCount,
+  );
+  eventGauge(
+    "withdrawal_finalized_event_volume",
+    "Cumulative withdrawal finalized volume (token units)",
+    (d) => Number(d.withdrawalFinalizedVolume) / WEI_DIVISOR,
+  );
+
   // -- Other --
   eventGauge(
     "withdrawal_adjusted_event_count",
