@@ -117,6 +117,20 @@ export const initDerivedMetrics = () => {
     }
   });
 
+  // Accounting staleness in seconds
+  const accountingStalenessGauge = createObservableGauge("accounting_staleness_seconds", {
+    description: "Seconds since last accounting update",
+    unit: "seconds",
+  });
+  accountingStalenessGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, state] of getAllNetworkStates().entries()) {
+      if (state.coreData) {
+        const staleness = Math.floor(Date.now() / 1000) - Number(state.coreData.latestReport.timestamp);
+        result.observe(staleness, { network });
+      }
+    }
+  });
+
   // Net flow since last report
   const netFlowSinceReportGauge = createObservableGauge("net_flow_since_report", {
     description: "Net deposits minus withdrawals since last accounting update (token units)",

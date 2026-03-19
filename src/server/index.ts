@@ -119,7 +119,7 @@ async function initializeNetwork(
     scraperManager.register(accountingTask, 5 * 60_000);
 
     // Rebalance: check every 30 minutes, only executes when cooldown has elapsed
-    const rebalanceTask = new RebalanceTask(network, txExecutor);
+    const rebalanceTask = new RebalanceTask(network, txExecutor, protocolClient);
     scraperManager.register(rebalanceTask, 30 * 60_000);
 
     console.log(`[${network}] Transaction executor tasks registered`);
@@ -265,6 +265,7 @@ Active networks: ${Array.from(networkConfigs.keys()).join(", ")}
 
 Endpoints:
   - Metrics: http://localhost:${metricsPort}/metrics
+  - Health:  http://localhost:${metricsPort}/health
 
 All metrics include 'network' label for filtering.
 Metric prefix: olla_butler_*

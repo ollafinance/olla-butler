@@ -109,7 +109,9 @@ async function loadNetworkConfig(
 ): Promise<ButlerConfig> {
   const configPath =
     userConfigFilePath || path.join(getConfigDir(), `${network}-base.env`);
-  dotenv.config({ path: configPath });
+  // Use override: true to prevent env vars from a previously loaded network
+  // leaking into subsequent networks (dotenv does not overwrite existing vars by default)
+  dotenv.config({ path: configPath, override: true });
 
   const config = buildConfig(network);
   await ensureConfigFile(configPath, !!userConfigFilePath, config);

@@ -12,7 +12,11 @@
  * stable/fastest one to primary position.
  */
 
-import { http, fallback, type Transport } from "viem";
+import { http, fallback, type Transport, type Chain } from "viem";
+import { foundry, mainnet, sepolia } from "viem/chains";
+
+/** Chains supported by the butler. Shared by protocol client and tx executor. */
+export const SUPPORTED_CHAINS: Chain[] = [sepolia, mainnet, foundry];
 
 export function createTransport(rpcUrls: string): Transport {
   const urls = rpcUrls

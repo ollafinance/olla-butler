@@ -32,6 +32,13 @@ export const initMetricsRegistry = (options: MetricsOptions) => {
     });
 
     authServer = http.createServer((req, res) => {
+      // Health endpoint — no auth required
+      if (req.url === "/health" || req.url === "/healthz") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "ok" }));
+        return;
+      }
+
       const authHeader = req.headers.authorization;
 
       if (!authHeader || !authHeader.startsWith("Bearer ")) {

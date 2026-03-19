@@ -6,8 +6,7 @@ import {
   type GetContractReturnType,
   type PublicClient,
 } from "viem";
-import { foundry, mainnet, sepolia } from "viem/chains";
-import { createTransport } from "./transport.js";
+import { createTransport, SUPPORTED_CHAINS } from "./transport.js";
 import {
   OllaCoreAbi,
   OllaVaultAbi,
@@ -29,8 +28,6 @@ import {
   type AttesterState,
   RebalanceStep,
 } from "../../types/index.js";
-
-const SUPPORTED_CHAINS = [sepolia, mainnet, foundry];
 
 type OllaCoreContract = GetContractReturnType<typeof OllaCoreAbi, PublicClient>;
 type OllaVaultContract = GetContractReturnType<typeof OllaVaultAbi, PublicClient>;
@@ -383,14 +380,14 @@ export class OllaProtocolClient {
         const address = getAddress(addr) as Address;
         let view = await this.canonicalRollupContract.read.getAttesterView([address]);
 
-        // If NONE on canonical, try historical rollups (attester may be exiting on old rollup)
+        // If NONE on canonical, try historical rollups in parallel (attester may be exiting on old rollup)
         if (view.status === AztecAttesterStatus.NONE && this.historicalRollupContracts.length > 0) {
-          for (const historicalRollup of this.historicalRollupContracts) {
-            const historicalView = await historicalRollup.read.getAttesterView([address]);
-            if (historicalView.status !== AztecAttesterStatus.NONE) {
-              view = historicalView;
-              break;
-            }
+          const historicalViews = await Promise.all(
+            this.historicalRollupContracts.map((r) => r.read.getAttesterView([address])),
+          );
+          const match = historicalViews.find((v) => v.status !== AztecAttesterStatus.NONE);
+          if (match) {
+            view = match;
           }
         }
 

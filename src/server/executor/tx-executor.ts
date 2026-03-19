@@ -14,12 +14,9 @@ import {
   type Account,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { foundry, mainnet, sepolia } from "viem/chains";
-import { createTransport } from "../../core/components/transport.js";
+import { createTransport, SUPPORTED_CHAINS } from "../../core/components/transport.js";
 import { OllaCoreWriteAbi, StakingManagerWriteAbi } from "../../types/write-abis.js";
 import type { ContractAddresses } from "../../types/index.js";
-
-const SUPPORTED_CHAINS: Chain[] = [sepolia, mainnet, foundry];
 
 export interface TransactionExecutorConfig {
   rpcUrl: string;
@@ -90,6 +87,10 @@ export class TransactionExecutor {
       `gas used: ${receipt.gasUsed} | status: ${receipt.status}`,
     );
 
+    if (receipt.status === "reverted") {
+      throw new Error(`updateAccounting() reverted in block ${receipt.blockNumber} (tx: ${hash})`);
+    }
+
     return hash;
   }
 
@@ -117,6 +118,10 @@ export class TransactionExecutor {
       `gas used: ${receipt.gasUsed} | status: ${receipt.status}`,
     );
 
+    if (receipt.status === "reverted") {
+      throw new Error(`rebalance() reverted in block ${receipt.blockNumber} (tx: ${hash})`);
+    }
+
     return hash;
   }
 
@@ -143,6 +148,10 @@ export class TransactionExecutor {
       `[TxExecutor] refreshAttester(${addr}) confirmed in block ${receipt.blockNumber} | ` +
       `gas used: ${receipt.gasUsed} | status: ${receipt.status}`,
     );
+
+    if (receipt.status === "reverted") {
+      throw new Error(`refreshAttester(${addr}) reverted in block ${receipt.blockNumber} (tx: ${hash})`);
+    }
 
     return hash;
   }

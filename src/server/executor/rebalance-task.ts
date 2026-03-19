@@ -11,12 +11,10 @@ import { AbstractScraper } from "../scrapers/base-scraper.js";
 import { getCoreData } from "../state/index.js";
 import { RebalanceStep, RebalanceStepNames } from "../../types/index.js";
 import type { TransactionExecutor } from "./tx-executor.js";
+import type { OllaProtocolClient } from "../../core/components/OllaProtocolClient.js";
 
 /** Minimum time between rebalance attempts: 24 hours in ms */
 const REBALANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
-/** Delay between multi-step rebalance calls to allow state to settle */
-const STEP_DELAY_MS = 15_000;
 
 /** Maximum steps to execute in a single run to prevent infinite loops */
 const MAX_STEPS_PER_RUN = 10;
@@ -26,13 +24,15 @@ export class RebalanceTask extends AbstractScraper {
   readonly network: string;
 
   private readonly executor: TransactionExecutor;
+  private readonly protocolClient: OllaProtocolClient;
   private lastRebalanceTime = 0;
   private isRunning = false;
 
-  constructor(network: string, executor: TransactionExecutor) {
+  constructor(network: string, executor: TransactionExecutor, protocolClient: OllaProtocolClient) {
     super();
     this.network = network;
     this.executor = executor;
+    this.protocolClient = protocolClient;
   }
 
   async scrape(): Promise<void> {
@@ -89,19 +89,11 @@ export class RebalanceTask extends AbstractScraper {
         await this.executor.rebalance();
         stepsExecuted++;
 
-        // Re-read state to get the new step
-        // Wait briefly for the state to be scraped by the core scraper
-        await new Promise((resolve) => setTimeout(resolve, STEP_DELAY_MS));
+        // Read new step directly from chain (don't rely on scraper timing)
+        const freshCoreData = await this.protocolClient.scrapeCoreData();
+        const newStep = freshCoreData.rebalanceProgress.step;
 
-        const updatedCoreData = getCoreData(this.network);
-        if (!updatedCoreData) {
-          console.warn(`[${this.name}/${this.network}] Lost core data during rebalance, stopping`);
-          break;
-        }
-
-        const newStep = updatedCoreData.rebalanceProgress.step;
         if (newStep === step) {
-          // Step didn't advance — might need more time or there's an issue
           console.warn(
             `[${this.name}/${this.network}] Rebalance step didn't advance (still ${RebalanceStepNames[step]}), stopping`,
           );

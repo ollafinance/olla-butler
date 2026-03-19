@@ -11,9 +11,15 @@ import {
 } from "../../types/index.js";
 import { updateEventData } from "../state/index.js";
 import { addAttester, removeAttester } from "../state/attester-registry.js";
+import { getDataDir } from "../../core/config/index.js";
+import fs from "fs/promises";
+import path from "node:path";
 
 const BREAKER_REASONS = ["RateDrop", "QueueRatio", "AccountingStale"] as const;
 const MAX_BLOCK_RANGE = 10_000n;
+
+/** Interval between disk flushes of lastProcessedBlock (every 10 scrape cycles) */
+const PERSIST_INTERVAL = 10;
 
 function createEmptyEventData(): EventData {
   return {
@@ -66,6 +72,7 @@ export class EventWatcher extends AbstractScraper {
   private readonly addresses: ContractAddresses;
   private lastProcessedBlock = 0n;
   private eventData: EventData;
+  private scrapesSinceLastPersist = 0;
 
   constructor(network: string, client: PublicClient, addresses: ContractAddresses) {
     super();
@@ -75,11 +82,49 @@ export class EventWatcher extends AbstractScraper {
     this.eventData = createEmptyEventData();
   }
 
+  private get checkpointPath(): string {
+    return path.join(getDataDir(), `event-watcher-${this.network}.json`);
+  }
+
+  private async loadCheckpoint(): Promise<bigint | null> {
+    try {
+      const data = await fs.readFile(this.checkpointPath, "utf-8");
+      const parsed = JSON.parse(data);
+      if (parsed.lastProcessedBlock) {
+        return BigInt(parsed.lastProcessedBlock);
+      }
+    } catch {
+      // No checkpoint file or invalid — start fresh
+    }
+    return null;
+  }
+
+  private async saveCheckpoint(): Promise<void> {
+    try {
+      const dir = path.dirname(this.checkpointPath);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(
+        this.checkpointPath,
+        JSON.stringify({ lastProcessedBlock: this.lastProcessedBlock.toString() }),
+      );
+    } catch (error) {
+      console.warn(`[${this.name}/${this.network}] Failed to save checkpoint:`, error);
+    }
+  }
+
   async init(): Promise<void> {
-    this.lastProcessedBlock = await this.client.getBlockNumber();
-    console.log(
-      `[${this.name}/${this.network}] Starting event monitoring from block ${this.lastProcessedBlock}`,
-    );
+    const checkpoint = await this.loadCheckpoint();
+    if (checkpoint !== null) {
+      this.lastProcessedBlock = checkpoint;
+      console.log(
+        `[${this.name}/${this.network}] Resuming event monitoring from checkpoint block ${this.lastProcessedBlock}`,
+      );
+    } else {
+      this.lastProcessedBlock = await this.client.getBlockNumber();
+      console.log(
+        `[${this.name}/${this.network}] Starting event monitoring from block ${this.lastProcessedBlock}`,
+      );
+    }
   }
 
   async scrape(): Promise<void> {
@@ -354,10 +399,22 @@ export class EventWatcher extends AbstractScraper {
     this.eventData.lastUpdated = new Date();
     updateEventData(this.network, { ...this.eventData });
 
+    // Periodically persist checkpoint to disk so events aren't lost on restart
+    this.scrapesSinceLastPersist++;
+    if (this.scrapesSinceLastPersist >= PERSIST_INTERVAL) {
+      this.scrapesSinceLastPersist = 0;
+      await this.saveCheckpoint();
+    }
+
     if (totalEvents > 0) {
       console.log(
         `[${this.name}/${this.network}] Blocks ${fromBlock}-${currentBlock} | ${totalEvents} event(s)`,
       );
     }
+  }
+
+  async shutdown(): Promise<void> {
+    // Save checkpoint on shutdown so we resume from the right block
+    await this.saveCheckpoint();
   }
 }
