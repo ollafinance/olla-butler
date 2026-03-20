@@ -48,7 +48,8 @@ export class RebalanceTask extends AbstractScraper {
       // Check on-chain cooldown
       const lastReportTimestamp = Number(coreData.latestReport.timestamp) * 1000;
       const cooldownMs = coreData.rebalanceCooldown * 1000;
-      const cooldownElapsed = now - lastReportTimestamp >= cooldownMs;
+      // Add 60s buffer to account for difference between Date.now() and block.timestamp
+      const cooldownElapsed = now - lastReportTimestamp >= cooldownMs + 60_000;
 
       if (!cooldownElapsed) {
         return;

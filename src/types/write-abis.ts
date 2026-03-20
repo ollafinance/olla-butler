@@ -18,6 +18,11 @@ export const OllaCoreWriteAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  {
+    type: "error",
+    name: "RebalanceCooldownNotElapsed",
+    inputs: [],
+  },
 ] as const;
 
 export const StakingManagerWriteAbi = [
