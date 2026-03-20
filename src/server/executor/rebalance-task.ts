@@ -21,8 +21,9 @@ const MAX_STEPS_PER_RUN = 10;
 
 /** Known revert signatures that are expected operational conditions, not errors */
 const KNOWN_REVERT_SIGNATURES: Record<string, string> = {
-  "0xe8b9b951": "RebalanceInProgress",
-  "0x4c55e7e4": "RebalanceCooldownActive",
+  "0x89d1a898": "RebalanceInProgress",
+  "0x3712a06d": "RebalanceCooldownActive",
+  "0xe8b9b951": "RewardsNotClaimable",
 };
 
 function getKnownRevertReason(error: unknown): string | undefined {

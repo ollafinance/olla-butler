@@ -20,7 +20,20 @@ export const OllaCoreWriteAbi = [
   },
   {
     type: "error",
-    name: "RebalanceCooldownNotElapsed",
+    name: "OllaCore__RebalanceInProgress",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "OllaCore__RebalanceCooldownActive",
+    inputs: [
+      { name: "elapsed", type: "uint256" },
+      { name: "required", type: "uint256" },
+    ],
+  },
+  {
+    type: "error",
+    name: "Rollup__RewardsNotClaimable",
     inputs: [],
   },
 ] as const;
