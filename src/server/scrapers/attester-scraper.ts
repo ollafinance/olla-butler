@@ -158,7 +158,7 @@ export function computeAttesterData(
       attester.effectiveBalance === 0n &&
       !attester.exit.exists
     ) {
-      // Fully exited on rollup but still in our registry
+      // Attester is NONE on rollup but still in our registry — tagged after loop
       reasons.push("fully_exited");
     }
 
@@ -174,6 +174,16 @@ export function computeAttesterData(
   const cachedVsRollupBalanceDrift = cachedStakedAmount !== undefined
     ? absDiff(cachedStakedAmount, rollupTotalEffectiveBalance)
     : 0n;
+
+  // Reclassify fully_exited → pending_activation when Olla has more staked than rollup shows
+  if (cachedStakedAmount !== undefined && cachedStakedAmount > rollupTotalEffectiveBalance) {
+    for (const stale of staleAttesters) {
+      const idx = stale.reasons.indexOf("fully_exited");
+      if (idx !== -1) {
+        stale.reasons[idx] = "pending_activation";
+      }
+    }
+  }
 
   return {
     attesters,

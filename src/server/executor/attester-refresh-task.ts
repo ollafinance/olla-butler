@@ -10,7 +10,7 @@ import { getAttesterData } from "../state/index.js";
 import type { TransactionExecutor } from "./tx-executor.js";
 
 /** Reasons that warrant a refreshAttester call */
-const REFRESH_REASONS = new Set(["slashing", "exit_undetected", "exit_exitable", "zombie"]);
+const REFRESH_REASONS = new Set(["slashing", "exit_undetected", "exit_exitable", "zombie", "fully_exited", "pending_activation"]);
 
 /** Cooldown per attester to avoid spamming refresh (5 minutes) */
 const PER_ATTESTER_COOLDOWN_MS = 5 * 60 * 1000;
