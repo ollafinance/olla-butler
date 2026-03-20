@@ -194,15 +194,47 @@ export class EventWatcher extends AbstractScraper {
     const currentBlock = await this.client.getBlockNumber();
     if (currentBlock <= this.lastProcessedBlock) return;
 
-    let fromBlock = this.lastProcessedBlock + 1n;
-    if (currentBlock - fromBlock > MAX_BLOCK_RANGE) {
-      fromBlock = currentBlock - MAX_BLOCK_RANGE;
-      console.warn(
-        `[${this.name}/${this.network}] Large block gap, scanning last ${MAX_BLOCK_RANGE} blocks`,
+    const gap = currentBlock - this.lastProcessedBlock;
+    if (gap > MAX_BLOCK_RANGE) {
+      console.log(
+        `[${this.name}/${this.network}] Catching up ${gap} blocks (${Math.ceil(Number(gap) / Number(MAX_BLOCK_RANGE))} chunks)...`,
       );
+      // Process in chunks to stay within RPC limits
+      let chunkFrom = this.lastProcessedBlock + 1n;
+      while (chunkFrom <= currentBlock) {
+        const chunkTo = chunkFrom + MAX_BLOCK_RANGE - 1n < currentBlock
+          ? chunkFrom + MAX_BLOCK_RANGE - 1n
+          : currentBlock;
+        await this.scrapeRange(chunkFrom, chunkTo);
+        this.lastProcessedBlock = chunkTo;
+        this.eventData.lastProcessedBlock = chunkTo;
+        chunkFrom = chunkTo + 1n;
+      }
+      this.eventData.lastUpdated = new Date();
+      updateEventData(this.network, { ...this.eventData });
+      await this.saveCheckpoint();
+      console.log(`[${this.name}/${this.network}] Catch-up complete at block ${currentBlock}`);
+      return;
     }
 
-    const blockRange = { fromBlock, toBlock: currentBlock };
+    await this.scrapeRange(this.lastProcessedBlock + 1n, currentBlock);
+
+    // Update state
+    this.lastProcessedBlock = currentBlock;
+    this.eventData.lastProcessedBlock = currentBlock;
+    this.eventData.lastUpdated = new Date();
+    updateEventData(this.network, { ...this.eventData });
+
+    // Periodically persist checkpoint to disk so events aren't lost on restart
+    this.scrapesSinceLastPersist++;
+    if (this.scrapesSinceLastPersist >= PERSIST_INTERVAL) {
+      this.scrapesSinceLastPersist = 0;
+      await this.saveCheckpoint();
+    }
+  }
+
+  private async scrapeRange(fromBlock: bigint, toBlock: bigint): Promise<void> {
+    const blockRange = { fromBlock, toBlock };
     const addr = this.addresses;
     const recentEvents: RecentEvent[] = [];
 
@@ -339,7 +371,7 @@ export class EventWatcher extends AbstractScraper {
     if (safetyResult.status === "fulfilled") {
       totalEvents += safetyResult.value.length;
       for (const log of safetyResult.value) {
-        recentEvents.push(this.toRecentEvent(log, "SafetyModule", blockTimestamps));
+        const recentEvent = this.toRecentEvent(log, "SafetyModule", blockTimestamps);
         switch (log.eventName) {
           case "CircuitBreakerTriggered": {
             this.eventData.circuitBreakerTriggeredCount++;
@@ -348,6 +380,7 @@ export class EventWatcher extends AbstractScraper {
             else if (reason === 1) this.eventData.circuitBreakerByReason.queueRatio++;
             else if (reason === 2) this.eventData.circuitBreakerByReason.accountingStale++;
             const reasonName = BREAKER_REASONS[reason] ?? `Unknown(${reason})`;
+            recentEvent.args.reason = reasonName;
             console.warn(
               `[${this.name}/${this.network}] WARNING: CircuitBreakerTriggered (${reasonName}) at block ${log.blockNumber}`,
             );
@@ -376,6 +409,7 @@ export class EventWatcher extends AbstractScraper {
             );
             break;
         }
+        recentEvents.push(recentEvent);
       }
     } else {
       console.error(
