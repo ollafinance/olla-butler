@@ -13,9 +13,6 @@ import { RebalanceStep, RebalanceStepNames } from "../../types/index.js";
 import type { TransactionExecutor } from "./tx-executor.js";
 import type { OllaProtocolClient } from "../../core/components/OllaProtocolClient.js";
 
-/** Minimum time between rebalance attempts: 24 hours in ms */
-const REBALANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
 /** Maximum steps to execute in a single run to prevent infinite loops */
 const MAX_STEPS_PER_RUN = 10;
 
@@ -25,7 +22,6 @@ export class RebalanceTask extends AbstractScraper {
 
   private readonly executor: TransactionExecutor;
   private readonly protocolClient: OllaProtocolClient;
-  private lastRebalanceTime = 0;
   private isRunning = false;
 
   constructor(network: string, executor: TransactionExecutor, protocolClient: OllaProtocolClient) {
@@ -55,11 +51,6 @@ export class RebalanceTask extends AbstractScraper {
       const cooldownElapsed = now - lastReportTimestamp >= cooldownMs;
 
       if (!cooldownElapsed) {
-        return;
-      }
-
-      // Also respect our own interval
-      if (now - this.lastRebalanceTime < REBALANCE_INTERVAL_MS) {
         return;
       }
     }
@@ -111,7 +102,6 @@ export class RebalanceTask extends AbstractScraper {
     }
 
     if (step === RebalanceStep.Done) {
-      this.lastRebalanceTime = Date.now();
       console.log(
         `[${this.name}/${this.network}] Rebalance completed in ${stepsExecuted} step(s)`,
       );

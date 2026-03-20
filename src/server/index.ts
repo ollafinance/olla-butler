@@ -119,9 +119,9 @@ async function initializeNetwork(
     const accountingTask = new AccountingUpdateTask(network, txExecutor);
     scraperManager.register(accountingTask, 5 * 60_000);
 
-    // Rebalance: check every 30 minutes, only executes when cooldown has elapsed
+    // Rebalance: check every 15 minutes, only executes when on-chain cooldown has elapsed
     const rebalanceTask = new RebalanceTask(network, txExecutor, protocolClient);
-    scraperManager.register(rebalanceTask, 30 * 60_000);
+    scraperManager.register(rebalanceTask, 15 * 60_000);
 
     console.log(`[${network}] Transaction executor tasks registered`);
   } else if (config.TX_EXECUTOR_ENABLED && !config.BUTLER_PRIVATE_KEY) {
