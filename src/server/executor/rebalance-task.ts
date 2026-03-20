@@ -68,6 +68,31 @@ export class RebalanceTask extends AbstractScraper {
     let step = currentStep;
     let stepsExecuted = 0;
 
+    // If step is Done, call rebalance() once to kick off a new cycle
+    if (step === RebalanceStep.Done) {
+      console.log(
+        `[${this.name}/${this.network}] Cooldown elapsed, initiating new rebalance cycle`,
+      );
+      try {
+        await this.executor.rebalance();
+        stepsExecuted++;
+        const freshCoreData = await this.protocolClient.scrapeCoreData();
+        step = freshCoreData.rebalanceProgress.step;
+        if (step === RebalanceStep.Done) {
+          console.log(
+            `[${this.name}/${this.network}] Rebalance cycle completed immediately (nothing to do)`,
+          );
+          return;
+        }
+      } catch (error) {
+        console.error(
+          `[${this.name}/${this.network}] Failed to initiate rebalance cycle:`,
+          error,
+        );
+        return;
+      }
+    }
+
     console.log(
       `[${this.name}/${this.network}] Starting rebalance from step: ${RebalanceStepNames[step]}`,
     );
