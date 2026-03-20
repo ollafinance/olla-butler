@@ -126,31 +126,31 @@ export class TransactionExecutor {
   }
 
   /**
-   * Calls StakingManager.refreshAttester(address)
+   * Calls StakingManager.refreshAttesterState(address[])
    */
   async refreshAttester(attesterAddress: string): Promise<string> {
     const stakingAddr = getAddress(this.addresses.stakingManager);
     const addr = getAddress(attesterAddress);
-    console.log(`[TxExecutor] Sending refreshAttester(${addr}) to ${stakingAddr}...`);
+    console.log(`[TxExecutor] Sending refreshAttesterState([${addr}]) to ${stakingAddr}...`);
 
     const hash = await this.walletClient.writeContract({
       account: this.account,
       chain: this.chain,
       address: stakingAddr,
       abi: StakingManagerWriteAbi,
-      functionName: "refreshAttester",
-      args: [addr],
+      functionName: "refreshAttesterState",
+      args: [[addr]],
     });
-    console.log(`[TxExecutor] refreshAttester tx sent: ${hash}`);
+    console.log(`[TxExecutor] refreshAttesterState tx sent: ${hash}`);
 
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
     console.log(
-      `[TxExecutor] refreshAttester(${addr}) confirmed in block ${receipt.blockNumber} | ` +
+      `[TxExecutor] refreshAttesterState([${addr}]) confirmed in block ${receipt.blockNumber} | ` +
       `gas used: ${receipt.gasUsed} | status: ${receipt.status}`,
     );
 
     if (receipt.status === "reverted") {
-      throw new Error(`refreshAttester(${addr}) reverted in block ${receipt.blockNumber} (tx: ${hash})`);
+      throw new Error(`refreshAttesterState([${addr}]) reverted in block ${receipt.blockNumber} (tx: ${hash})`);
     }
 
     return hash;

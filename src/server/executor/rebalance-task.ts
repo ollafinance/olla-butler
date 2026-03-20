@@ -19,7 +19,13 @@ import type { OllaProtocolClient } from "../../core/components/OllaProtocolClien
 /** Maximum steps to execute in a single run to prevent infinite loops */
 const MAX_STEPS_PER_RUN = 10;
 
-/** Known revert signatures that are expected operational conditions, not errors */
+/** Known reverts that are expected operational conditions, not errors */
+const KNOWN_REVERT_NAMES = new Set([
+  "OllaCore__RebalanceInProgress",
+  "OllaCore__RebalanceCooldownActive",
+  "Rollup__RewardsNotClaimable",
+]);
+
 const KNOWN_REVERT_SIGNATURES: Record<string, string> = {
   "0x89d1a898": "RebalanceInProgress",
   "0x3712a06d": "RebalanceCooldownActive",
@@ -28,7 +34,12 @@ const KNOWN_REVERT_SIGNATURES: Record<string, string> = {
 
 function getKnownRevertReason(error: unknown): string | undefined {
   if (error && typeof error === "object" && "cause" in error) {
-    const cause = error.cause as { signature?: string };
+    const cause = error.cause as { signature?: string; data?: { errorName?: string } };
+    // Check decoded error name first (when ABI includes the error definition)
+    if (cause?.data?.errorName && KNOWN_REVERT_NAMES.has(cause.data.errorName)) {
+      return cause.data.errorName;
+    }
+    // Fallback to raw signature matching
     if (cause?.signature && cause.signature in KNOWN_REVERT_SIGNATURES) {
       return KNOWN_REVERT_SIGNATURES[cause.signature];
     }
@@ -94,7 +105,7 @@ export class RebalanceTask extends AbstractScraper {
         );
       } catch (error) {
         const reason = getKnownRevertReason(error);
-        if (reason === "RebalanceInProgress") {
+        if (reason === "RebalanceInProgress" || reason === "OllaCore__RebalanceInProgress") {
           // Cached state said Done but on-chain is mid-cycle — re-read and continue
           console.log(
             `[${this.name}/${this.network}] Rebalance already in progress, reading current step from chain...`,

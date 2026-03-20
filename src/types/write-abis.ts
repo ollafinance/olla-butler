@@ -41,8 +41,8 @@ export const OllaCoreWriteAbi = [
 export const StakingManagerWriteAbi = [
   {
     type: "function",
-    name: "refreshAttester",
-    inputs: [{ name: "_attester", type: "address" }],
+    name: "refreshAttesterState",
+    inputs: [{ name: "attesters", type: "address[]" }],
     outputs: [],
     stateMutability: "nonpayable",
   },
