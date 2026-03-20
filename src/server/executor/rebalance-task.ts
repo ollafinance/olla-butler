@@ -1,7 +1,10 @@
 /**
  * Rebalance Task
  *
- * Calls OllaCore.rebalance() daily, respecting the on-chain rebalance cooldown.
+ * Calls OllaCore.rebalance() periodically. The contract enforces its own cooldown
+ * via _lastRebalanceTimestamp — the butler simply attempts to call rebalance() and
+ * handles expected reverts (cooldown, in-progress) gracefully.
+ *
  * Rebalance is a multi-step process (Harvest → PullUnstaked → FinalizeWithdrawals →
  * InitiateUnstake → StakeSurplus → Done). The task calls rebalance() repeatedly
  * until the step reaches Done or an error occurs.
@@ -15,6 +18,22 @@ import type { OllaProtocolClient } from "../../core/components/OllaProtocolClien
 
 /** Maximum steps to execute in a single run to prevent infinite loops */
 const MAX_STEPS_PER_RUN = 10;
+
+/** Known revert signatures that are expected operational conditions, not errors */
+const KNOWN_REVERT_SIGNATURES: Record<string, string> = {
+  "0xe8b9b951": "RebalanceInProgress",
+  "0x4c55e7e4": "RebalanceCooldownActive",
+};
+
+function getKnownRevertReason(error: unknown): string | undefined {
+  if (error && typeof error === "object" && "cause" in error) {
+    const cause = error.cause as { signature?: string };
+    if (cause?.signature && cause.signature in KNOWN_REVERT_SIGNATURES) {
+      return KNOWN_REVERT_SIGNATURES[cause.signature];
+    }
+  }
+  return undefined;
+}
 
 export class RebalanceTask extends AbstractScraper {
   readonly name = "tx-rebalance";
@@ -42,21 +61,6 @@ export class RebalanceTask extends AbstractScraper {
       return;
     }
 
-    // Check if rebalance is already done and cooldown hasn't elapsed
-    const now = Date.now();
-    if (coreData.rebalanceProgress.step === RebalanceStep.Done) {
-      // Check on-chain cooldown
-      const lastReportTimestamp = Number(coreData.latestReport.timestamp) * 1000;
-      const cooldownMs = coreData.rebalanceCooldown * 1000;
-      // Add 60s buffer to account for difference between Date.now() and block.timestamp
-      const cooldownElapsed = now - lastReportTimestamp >= cooldownMs + 60_000;
-
-      if (!cooldownElapsed) {
-        return;
-      }
-    }
-
-    // If step is not Done, we have an in-progress rebalance — continue it
     this.isRunning = true;
     try {
       await this.executeRebalanceSteps(coreData.rebalanceProgress.step);
@@ -69,11 +73,10 @@ export class RebalanceTask extends AbstractScraper {
     let step = currentStep;
     let stepsExecuted = 0;
 
-    // If step is Done, call rebalance() once to kick off a new cycle
+    // If step is Done, call rebalance() once to kick off a new cycle.
+    // The contract enforces cooldown — if it hasn't elapsed, this will revert
+    // with RebalanceCooldownActive and we'll try again next poll.
     if (step === RebalanceStep.Done) {
-      console.log(
-        `[${this.name}/${this.network}] Cooldown elapsed, initiating new rebalance cycle`,
-      );
       try {
         await this.executor.rebalance();
         stepsExecuted++;
@@ -85,11 +88,21 @@ export class RebalanceTask extends AbstractScraper {
           );
           return;
         }
-      } catch (error) {
-        console.error(
-          `[${this.name}/${this.network}] Failed to initiate rebalance cycle:`,
-          error,
+        console.log(
+          `[${this.name}/${this.network}] New rebalance cycle started, now at step: ${RebalanceStepNames[step]}`,
         );
+      } catch (error) {
+        const reason = getKnownRevertReason(error);
+        if (reason) {
+          console.log(
+            `[${this.name}/${this.network}] Rebalance not ready: ${reason}`,
+          );
+        } else {
+          console.error(
+            `[${this.name}/${this.network}] Failed to initiate rebalance cycle:`,
+            error,
+          );
+        }
         return;
       }
     }
