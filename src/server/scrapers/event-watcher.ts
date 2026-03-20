@@ -10,7 +10,7 @@ import {
   RewardsAccumulatorEventAbi,
 } from "../../types/index.js";
 import { updateEventData } from "../state/index.js";
-import { pushEvents } from "../state/event-log.js";
+import { pushEvents, getRecentEvents } from "../state/event-log.js";
 import { addAttester, removeAttester } from "../state/attester-registry.js";
 import { getDataDir } from "../../core/config/index.js";
 import fs from "fs/promises";
@@ -19,8 +19,21 @@ import path from "node:path";
 const BREAKER_REASONS = ["RateDrop", "QueueRatio", "AccountingStale"] as const;
 const MAX_BLOCK_RANGE = 10_000n;
 
-/** Interval between disk flushes of lastProcessedBlock (every 10 scrape cycles) */
+/** Interval between disk flushes of state (every 10 scrape cycles) */
 const PERSIST_INTERVAL = 10;
+
+/** JSON replacer that converts BigInt values to tagged strings for safe serialisation */
+function bigintReplacer(_key: string, value: unknown): unknown {
+  return typeof value === "bigint" ? `__bigint:${value.toString()}` : value;
+}
+
+/** JSON reviver that restores tagged BigInt strings */
+function bigintReviver(_key: string, value: unknown): unknown {
+  if (typeof value === "string" && value.startsWith("__bigint:")) {
+    return BigInt(value.slice("__bigint:".length));
+  }
+  return value;
+}
 
 function createEmptyEventData(): EventData {
   return {
@@ -87,17 +100,37 @@ export class EventWatcher extends AbstractScraper {
     return path.join(getDataDir(), `event-watcher-${this.network}.json`);
   }
 
-  private async loadCheckpoint(): Promise<bigint | null> {
+  private async loadCheckpoint(): Promise<{ block: bigint; eventData: EventData | null; recentEvents: RecentEvent[] | null }> {
     try {
       const data = await fs.readFile(this.checkpointPath, "utf-8");
-      const parsed = JSON.parse(data);
-      if (parsed.lastProcessedBlock) {
-        return BigInt(parsed.lastProcessedBlock);
+      const parsed = JSON.parse(data, bigintReviver);
+
+      // Support legacy format (only lastProcessedBlock)
+      if (!parsed.eventData) {
+        if (parsed.lastProcessedBlock) {
+          return { block: BigInt(parsed.lastProcessedBlock), eventData: null, recentEvents: null };
+        }
+        return { block: 0n, eventData: null, recentEvents: null };
       }
+
+      const block = BigInt(parsed.lastProcessedBlock);
+      const eventData: EventData = {
+        ...parsed.eventData,
+        lastUpdated: new Date(parsed.eventData.lastUpdated),
+      };
+      // Restore recent events with Date objects
+      const recentEvents: RecentEvent[] | null = parsed.recentEvents
+        ? parsed.recentEvents.map((e: RecentEvent & { timestamp: string }) => ({
+            ...e,
+            timestamp: new Date(e.timestamp),
+          }))
+        : null;
+
+      return { block, eventData, recentEvents };
     } catch {
       // No checkpoint file or invalid — start fresh
     }
-    return null;
+    return { block: 0n, eventData: null, recentEvents: null };
   }
 
   private async saveCheckpoint(): Promise<void> {
@@ -106,7 +139,14 @@ export class EventWatcher extends AbstractScraper {
       await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(
         this.checkpointPath,
-        JSON.stringify({ lastProcessedBlock: this.lastProcessedBlock.toString() }),
+        JSON.stringify(
+          {
+            lastProcessedBlock: this.lastProcessedBlock.toString(),
+            eventData: this.eventData,
+            recentEvents: getRecentEvents(this.network),
+          },
+          bigintReplacer,
+        ),
       );
     } catch (error) {
       console.warn(`[${this.name}/${this.network}] Failed to save checkpoint:`, error);
@@ -115,8 +155,25 @@ export class EventWatcher extends AbstractScraper {
 
   async init(): Promise<void> {
     const checkpoint = await this.loadCheckpoint();
-    if (checkpoint !== null) {
-      this.lastProcessedBlock = checkpoint;
+    if (checkpoint.block > 0n) {
+      this.lastProcessedBlock = checkpoint.block;
+
+      if (checkpoint.eventData) {
+        this.eventData = checkpoint.eventData;
+        this.eventData.lastProcessedBlock = checkpoint.block;
+        updateEventData(this.network, { ...this.eventData });
+        console.log(
+          `[${this.name}/${this.network}] Restored event data from checkpoint (${this.eventData.depositCount} deposits, ${this.eventData.accountingUpdateCount} accounting updates, ...)`,
+        );
+      }
+
+      if (checkpoint.recentEvents && checkpoint.recentEvents.length > 0) {
+        pushEvents(this.network, checkpoint.recentEvents);
+        console.log(
+          `[${this.name}/${this.network}] Restored ${checkpoint.recentEvents.length} recent events from checkpoint`,
+        );
+      }
+
       console.log(
         `[${this.name}/${this.network}] Resuming event monitoring from checkpoint block ${this.lastProcessedBlock}`,
       );
