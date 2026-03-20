@@ -129,7 +129,7 @@ export class EventWatcher extends AbstractScraper {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private toRecentEvent(log: any, contract: string): RecentEvent {
+  private toRecentEvent(log: any, contract: string, blockTimestamps: Map<bigint, Date>): RecentEvent {
     const args: Record<string, string> = {};
     if (log.args) {
       for (const [key, value] of Object.entries(log.args)) {
@@ -148,9 +148,46 @@ export class EventWatcher extends AbstractScraper {
       contract,
       blockNumber: log.blockNumber,
       transactionHash: log.transactionHash,
-      timestamp: new Date(),
+      timestamp: blockTimestamps.get(log.blockNumber) ?? new Date(),
       args,
     };
+  }
+
+  /**
+   * Fetches block timestamps for all unique block numbers in the event logs.
+   * Uses parallel fetching with deduplication to minimize RPC calls.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async fetchBlockTimestamps(allLogs: any[][]): Promise<Map<bigint, Date>> {
+    const blockNumbers = new Set<bigint>();
+    for (const logs of allLogs) {
+      for (const log of logs) {
+        if (log.blockNumber != null) {
+          blockNumbers.add(log.blockNumber);
+        }
+      }
+    }
+
+    const timestamps = new Map<bigint, Date>();
+    if (blockNumbers.size === 0) return timestamps;
+
+    const results = await Promise.allSettled(
+      Array.from(blockNumbers).map(async (blockNumber) => {
+        const block = await this.client.getBlock({ blockNumber });
+        return { blockNumber, timestamp: Number(block.timestamp) };
+      }),
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        timestamps.set(
+          result.value.blockNumber,
+          new Date(result.value.timestamp * 1000),
+        );
+      }
+    }
+
+    return timestamps;
   }
 
   async scrape(): Promise<void> {
@@ -211,11 +248,17 @@ export class EventWatcher extends AbstractScraper {
 
     let totalEvents = 0;
 
+    // Fetch block timestamps for all events (for accurate historical timestamps)
+    const allFulfilledLogs = [coreResult, vaultResult, safetyResult, stakingResult, wqResult, raResult]
+      .filter((r): r is PromiseFulfilledResult<typeof coreResult extends PromiseSettledResult<infer T> ? T : never> => r.status === "fulfilled")
+      .map((r) => r.value);
+    const blockTimestamps = await this.fetchBlockTimestamps(allFulfilledLogs);
+
     // -- Core events --
     if (coreResult.status === "fulfilled") {
       totalEvents += coreResult.value.length;
       for (const log of coreResult.value) {
-        recentEvents.push(this.toRecentEvent(log, "OllaCore"));
+        recentEvents.push(this.toRecentEvent(log, "OllaCore", blockTimestamps));
         switch (log.eventName) {
           case "AccountingUpdated":
             this.eventData.accountingUpdateCount++;
@@ -258,7 +301,7 @@ export class EventWatcher extends AbstractScraper {
     if (vaultResult.status === "fulfilled") {
       totalEvents += vaultResult.value.length;
       for (const log of vaultResult.value) {
-        recentEvents.push(this.toRecentEvent(log, "Vault"));
+        recentEvents.push(this.toRecentEvent(log, "Vault", blockTimestamps));
         switch (log.eventName) {
           case "Deposit":
             this.eventData.depositCount++;
@@ -296,7 +339,7 @@ export class EventWatcher extends AbstractScraper {
     if (safetyResult.status === "fulfilled") {
       totalEvents += safetyResult.value.length;
       for (const log of safetyResult.value) {
-        recentEvents.push(this.toRecentEvent(log, "SafetyModule"));
+        recentEvents.push(this.toRecentEvent(log, "SafetyModule", blockTimestamps));
         switch (log.eventName) {
           case "CircuitBreakerTriggered": {
             this.eventData.circuitBreakerTriggeredCount++;
@@ -345,7 +388,7 @@ export class EventWatcher extends AbstractScraper {
     if (stakingResult.status === "fulfilled") {
       totalEvents += stakingResult.value.length;
       for (const log of stakingResult.value) {
-        recentEvents.push(this.toRecentEvent(log, "StakingManager"));
+        recentEvents.push(this.toRecentEvent(log, "StakingManager", blockTimestamps));
         switch (log.eventName) {
           case "StakedWithProvider":
             this.eventData.stakedCount++;
@@ -390,7 +433,7 @@ export class EventWatcher extends AbstractScraper {
     if (wqResult.status === "fulfilled") {
       totalEvents += wqResult.value.length;
       for (const log of wqResult.value) {
-        recentEvents.push(this.toRecentEvent(log, "WithdrawalQueue"));
+        recentEvents.push(this.toRecentEvent(log, "WithdrawalQueue", blockTimestamps));
         switch (log.eventName) {
           case "WithdrawalRequested":
             this.eventData.withdrawalRequestedCount++;
@@ -419,7 +462,7 @@ export class EventWatcher extends AbstractScraper {
     if (raResult.status === "fulfilled") {
       totalEvents += raResult.value.length;
       for (const log of raResult.value) {
-        recentEvents.push(this.toRecentEvent(log, "RewardsAccumulator"));
+        recentEvents.push(this.toRecentEvent(log, "RewardsAccumulator", blockTimestamps));
       }
     } else {
       console.error(
