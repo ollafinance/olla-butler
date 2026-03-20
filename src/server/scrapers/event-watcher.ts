@@ -506,8 +506,8 @@ export class EventWatcher extends AbstractScraper {
     }
 
     // Update state
-    this.lastProcessedBlock = currentBlock;
-    this.eventData.lastProcessedBlock = currentBlock;
+    this.lastProcessedBlock = toBlock;
+    this.eventData.lastProcessedBlock = toBlock;
     this.eventData.lastUpdated = new Date();
     updateEventData(this.network, { ...this.eventData });
 
@@ -526,7 +526,7 @@ export class EventWatcher extends AbstractScraper {
 
     if (totalEvents > 0) {
       console.log(
-        `[${this.name}/${this.network}] Blocks ${fromBlock}-${currentBlock} | ${totalEvents} event(s)`,
+        `[${this.name}/${this.network}] Blocks ${fromBlock}-${toBlock} | ${totalEvents} event(s)`,
       );
     }
   }
