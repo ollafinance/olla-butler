@@ -93,17 +93,32 @@ export class RebalanceTask extends AbstractScraper {
         );
       } catch (error) {
         const reason = getKnownRevertReason(error);
-        if (reason) {
+        if (reason === "RebalanceInProgress") {
+          // Cached state said Done but on-chain is mid-cycle — re-read and continue
+          console.log(
+            `[${this.name}/${this.network}] Rebalance already in progress, reading current step from chain...`,
+          );
+          const freshCoreData = await this.protocolClient.scrapeCoreData();
+          step = freshCoreData.rebalanceProgress.step;
+          if (step === RebalanceStep.Done) {
+            console.log(
+              `[${this.name}/${this.network}] On-chain step is Done, will retry next poll`,
+            );
+            return;
+          }
+          // Fall through to the while loop to continue from the actual step
+        } else if (reason) {
           console.log(
             `[${this.name}/${this.network}] Rebalance not ready: ${reason}`,
           );
+          return;
         } else {
           console.error(
             `[${this.name}/${this.network}] Failed to initiate rebalance cycle:`,
             error,
           );
+          return;
         }
-        return;
       }
     }
 
