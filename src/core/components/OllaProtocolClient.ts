@@ -217,7 +217,7 @@ export class OllaProtocolClient {
   }
 
   async scrapeCoreData(): Promise<CoreData> {
-    const [totalAssets, exchangeRate, protocolFeeBP, treasuryFeeSplitBP, targetBufferedAssets, rebalanceCooldown, accountingState, latestReport, rebalanceProgress, flowCounters] =
+    const [totalAssets, exchangeRate, protocolFeeBP, treasuryFeeSplitBP, targetBufferedAssets, rebalanceCooldown, rebalanceGasThreshold, accountingState, latestReport, rebalanceProgress, flowCounters] =
       await Promise.all([
         this.coreContract.read.totalAssets(),
         this.coreContract.read.exchangeRate(),
@@ -225,6 +225,7 @@ export class OllaProtocolClient {
         this.coreContract.read.treasuryFeeSplitBP(),
         this.coreContract.read.targetBufferedAssets(),
         this.coreContract.read.rebalanceCooldown(),
+        this.coreContract.read.rebalanceGasThreshold(),
         this.coreContract.read.accountingState(),
         this.coreContract.read.latestReport(),
         this.coreContract.read.rebalanceProgress(),
@@ -238,6 +239,7 @@ export class OllaProtocolClient {
       treasuryFeeSplitBP,
       targetBufferedAssets,
       rebalanceCooldown,
+      rebalanceGasThreshold,
       accountingState: {
         stakedPrincipal: accountingState.stakedPrincipal,
         rewardsAccumulatorBalance: accountingState.rewardsAccumulatorBalance,
@@ -331,26 +333,35 @@ export class OllaProtocolClient {
   }
 
   async scrapeSafetyModuleData(): Promise<SafetyModuleData> {
-    const [isPaused, depositCap] = await Promise.all([
+    const [isPaused, depositCap, minRateDropBps, maxQueueRatioBps, maxAccountingDelay, withdrawalMinimum] = await Promise.all([
       this.safetyModuleContract.read.isPaused(),
       this.safetyModuleContract.read.depositCap(),
+      this.safetyModuleContract.read.minRateDropBps(),
+      this.safetyModuleContract.read.maxQueueRatioBps(),
+      this.safetyModuleContract.read.maxAccountingDelay(),
+      this.safetyModuleContract.read.withdrawalMinimum(),
     ]);
 
     return {
       isPaused,
       depositCap,
+      minRateDropBps,
+      maxQueueRatioBps,
+      maxAccountingDelay,
+      withdrawalMinimum,
       lastUpdated: new Date(),
     };
   }
 
   async scrapeWithdrawalQueueData(): Promise<WithdrawalQueueData> {
-    const [nextRequestId, nextPendingId, totalPendingAssets, totalPendingShares, nextUnfinalized] =
+    const [nextRequestId, nextPendingId, totalPendingAssets, totalPendingShares, nextUnfinalized, gasThreshold] =
       await Promise.all([
         this.withdrawalQueueContract.read.nextRequestId(),
         this.withdrawalQueueContract.read.nextPendingId(),
         this.withdrawalQueueContract.read.totalPendingAssets(),
         this.withdrawalQueueContract.read.totalPendingShares(),
         this.withdrawalQueueContract.read.nextUnfinalized(),
+        this.withdrawalQueueContract.read.gasThreshold(),
       ]);
 
     return {
@@ -359,6 +370,7 @@ export class OllaProtocolClient {
       totalPendingAssets,
       totalPendingShares,
       nextUnfinalized,
+      gasThreshold,
       lastUpdated: new Date(),
     };
   }

@@ -26,7 +26,9 @@ export class SafetyModuleScraper extends AbstractScraper {
 
       console.log(
         `[${this.name}/${this.network}] Paused: ${data.isPaused} | ` +
-        `DepositCap: ${formatEther(data.depositCap)}`,
+        `DepositCap: ${formatEther(data.depositCap)} | ` +
+        `RateDropBps: ${data.minRateDropBps} | QueueRatioBps: ${data.maxQueueRatioBps} | ` +
+        `MaxAcctDelay: ${data.maxAccountingDelay}s | WithdrawalMin: ${formatEther(data.withdrawalMinimum)}`,
       );
     } catch (error) {
       console.error(`[${this.name}/${this.network}] Error during scrape:`, error);

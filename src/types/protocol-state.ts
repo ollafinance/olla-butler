@@ -69,6 +69,7 @@ export type CoreData = {
   treasuryFeeSplitBP: number;
   targetBufferedAssets: bigint;
   rebalanceCooldown: number;
+  rebalanceGasThreshold: number;
   accountingState: AccountingState;
   latestReport: LatestReport;
   rebalanceProgress: RebalanceProgress;
@@ -104,6 +105,10 @@ export type StakingData = {
 export type SafetyModuleData = {
   isPaused: boolean;
   depositCap: bigint;
+  minRateDropBps: bigint;
+  maxQueueRatioBps: bigint;
+  maxAccountingDelay: bigint;
+  withdrawalMinimum: bigint;
   lastUpdated: Date;
 };
 
@@ -113,6 +118,7 @@ export type WithdrawalQueueData = {
   totalPendingAssets: bigint;
   totalPendingShares: bigint;
   nextUnfinalized: bigint;
+  gasThreshold: number;
   lastUpdated: Date;
 };
 
@@ -182,6 +188,15 @@ export type AttesterData = {
   staleAttesters: StaleAttester[];
   exitableAttesterCount: number;
   lastUpdated: Date;
+};
+
+export type RecentEvent = {
+  eventName: string;
+  contract: string;
+  blockNumber: bigint;
+  transactionHash: string;
+  timestamp: Date;
+  args: Record<string, string>;
 };
 
 export type EventData = {

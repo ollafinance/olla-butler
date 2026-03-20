@@ -3,6 +3,7 @@ import { MeterProvider } from "@opentelemetry/sdk-metrics";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { PACKAGE_NAME } from "../../core/config/index.js";
+import { handleEventsRequest } from "../api/events.js";
 import http from "node:http";
 
 let exporter: PrometheusExporter | null = null;
@@ -32,10 +33,19 @@ export const initMetricsRegistry = (options: MetricsOptions) => {
     });
 
     authServer = http.createServer((req, res) => {
+      const reqUrl = req.url ?? "";
+      const reqPath = reqUrl.split("?")[0];
+
       // Health endpoint — no auth required
-      if (req.url === "/health" || req.url === "/healthz") {
+      if (reqPath === "/health" || reqPath === "/healthz") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok" }));
+        return;
+      }
+
+      // Events endpoint — no auth required (read-only, non-sensitive)
+      if (reqPath === "/events") {
+        handleEventsRequest(req, res);
         return;
       }
 
@@ -61,7 +71,7 @@ export const initMetricsRegistry = (options: MetricsOptions) => {
         return;
       }
 
-      if (req.url === "/metrics") {
+      if (reqPath === "/metrics") {
         exporter!.getMetricsRequestHandler(req, res);
       } else {
         res.writeHead(404, { "Content-Type": "text/plain" });
@@ -71,13 +81,41 @@ export const initMetricsRegistry = (options: MetricsOptions) => {
 
     authServer.listen(options.port);
   } else {
-    exporter = new PrometheusExporter({ port: options.port });
+    exporter = new PrometheusExporter({
+      preventServerStart: true,
+    });
+
     meterProvider = new MeterProvider({
       readers: [exporter],
       resource: resourceFromAttributes({
         [ATTR_SERVICE_NAME]: PACKAGE_NAME,
       }),
     });
+
+    authServer = http.createServer((req, res) => {
+      const reqUrl = req.url ?? "";
+      const reqPath = reqUrl.split("?")[0];
+
+      if (reqPath === "/health" || reqPath === "/healthz") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "ok" }));
+        return;
+      }
+
+      if (reqPath === "/events") {
+        handleEventsRequest(req, res);
+        return;
+      }
+
+      if (reqPath === "/metrics") {
+        exporter!.getMetricsRequestHandler(req, res);
+      } else {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("Not Found");
+      }
+    });
+
+    authServer.listen(options.port);
   }
 
   return { exporter, meterProvider };

@@ -170,6 +170,10 @@ export const StakingProviderRegistryAbi = [
 export const SafetyModuleAbi = [
   { type: "function", name: "isPaused", inputs: [], outputs: [{ type: "bool" }], stateMutability: "view" },
   { type: "function", name: "depositCap", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "minRateDropBps", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "maxQueueRatioBps", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "maxAccountingDelay", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "withdrawalMinimum", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "CORE", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
   { type: "function", name: "VAULT", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
 ] as const;

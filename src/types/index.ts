@@ -34,6 +34,7 @@ export {
   type SafetyModuleData,
   type WithdrawalQueueData,
   type ContractAddresses,
+  type RecentEvent,
   type EventData,
   type AttesterExitState,
   type AttesterState,

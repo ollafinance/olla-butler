@@ -1,6 +1,6 @@
-import { type Address, type PublicClient } from "viem";
+import { type Address, type PublicClient, formatEther } from "viem";
 import { AbstractScraper } from "./base-scraper.js";
-import type { ContractAddresses, EventData } from "../../types/index.js";
+import type { ContractAddresses, EventData, RecentEvent } from "../../types/index.js";
 import {
   OllaCoreEventAbi,
   OllaVaultEventAbi,
@@ -10,6 +10,7 @@ import {
   RewardsAccumulatorEventAbi,
 } from "../../types/index.js";
 import { updateEventData } from "../state/index.js";
+import { pushEvents } from "../state/event-log.js";
 import { addAttester, removeAttester } from "../state/attester-registry.js";
 import { getDataDir } from "../../core/config/index.js";
 import fs from "fs/promises";
@@ -127,6 +128,31 @@ export class EventWatcher extends AbstractScraper {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private toRecentEvent(log: any, contract: string): RecentEvent {
+    const args: Record<string, string> = {};
+    if (log.args) {
+      for (const [key, value] of Object.entries(log.args)) {
+        if (typeof value === "bigint") {
+          // Format wei values as human-readable where likely (heuristic: > 1e15 is probably wei)
+          args[key] = value > 1_000_000_000_000_000n
+            ? `${formatEther(value)} (${value.toString()})`
+            : value.toString();
+        } else {
+          args[key] = String(value);
+        }
+      }
+    }
+    return {
+      eventName: log.eventName,
+      contract,
+      blockNumber: log.blockNumber,
+      transactionHash: log.transactionHash,
+      timestamp: new Date(),
+      args,
+    };
+  }
+
   async scrape(): Promise<void> {
     const currentBlock = await this.client.getBlockNumber();
     if (currentBlock <= this.lastProcessedBlock) return;
@@ -141,6 +167,7 @@ export class EventWatcher extends AbstractScraper {
 
     const blockRange = { fromBlock, toBlock: currentBlock };
     const addr = this.addresses;
+    const recentEvents: RecentEvent[] = [];
 
     const [coreResult, vaultResult, safetyResult, stakingResult, wqResult, raResult] =
       await Promise.allSettled([
@@ -188,6 +215,7 @@ export class EventWatcher extends AbstractScraper {
     if (coreResult.status === "fulfilled") {
       totalEvents += coreResult.value.length;
       for (const log of coreResult.value) {
+        recentEvents.push(this.toRecentEvent(log, "OllaCore"));
         switch (log.eventName) {
           case "AccountingUpdated":
             this.eventData.accountingUpdateCount++;
@@ -230,6 +258,7 @@ export class EventWatcher extends AbstractScraper {
     if (vaultResult.status === "fulfilled") {
       totalEvents += vaultResult.value.length;
       for (const log of vaultResult.value) {
+        recentEvents.push(this.toRecentEvent(log, "Vault"));
         switch (log.eventName) {
           case "Deposit":
             this.eventData.depositCount++;
@@ -267,6 +296,7 @@ export class EventWatcher extends AbstractScraper {
     if (safetyResult.status === "fulfilled") {
       totalEvents += safetyResult.value.length;
       for (const log of safetyResult.value) {
+        recentEvents.push(this.toRecentEvent(log, "SafetyModule"));
         switch (log.eventName) {
           case "CircuitBreakerTriggered": {
             this.eventData.circuitBreakerTriggeredCount++;
@@ -315,6 +345,7 @@ export class EventWatcher extends AbstractScraper {
     if (stakingResult.status === "fulfilled") {
       totalEvents += stakingResult.value.length;
       for (const log of stakingResult.value) {
+        recentEvents.push(this.toRecentEvent(log, "StakingManager"));
         switch (log.eventName) {
           case "StakedWithProvider":
             this.eventData.stakedCount++;
@@ -359,6 +390,7 @@ export class EventWatcher extends AbstractScraper {
     if (wqResult.status === "fulfilled") {
       totalEvents += wqResult.value.length;
       for (const log of wqResult.value) {
+        recentEvents.push(this.toRecentEvent(log, "WithdrawalQueue"));
         switch (log.eventName) {
           case "WithdrawalRequested":
             this.eventData.withdrawalRequestedCount++;
@@ -383,9 +415,12 @@ export class EventWatcher extends AbstractScraper {
       );
     }
 
-    // -- Rewards accumulator events (counted for totals only) --
+    // -- Rewards accumulator events --
     if (raResult.status === "fulfilled") {
       totalEvents += raResult.value.length;
+      for (const log of raResult.value) {
+        recentEvents.push(this.toRecentEvent(log, "RewardsAccumulator"));
+      }
     } else {
       console.error(
         `[${this.name}/${this.network}] Failed to poll rewards accumulator events:`,
@@ -398,6 +433,12 @@ export class EventWatcher extends AbstractScraper {
     this.eventData.lastProcessedBlock = currentBlock;
     this.eventData.lastUpdated = new Date();
     updateEventData(this.network, { ...this.eventData });
+
+    // Store recent events (sorted by block number)
+    if (recentEvents.length > 0) {
+      recentEvents.sort((a, b) => Number(a.blockNumber - b.blockNumber));
+      pushEvents(this.network, recentEvents);
+    }
 
     // Periodically persist checkpoint to disk so events aren't lost on restart
     this.scrapesSinceLastPersist++;
