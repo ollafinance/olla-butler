@@ -58,7 +58,6 @@ export type StakingState = {
 };
 
 export type ProviderConfig = {
-  admin: string;
   rewardsRecipient: string;
 };
 

@@ -138,7 +138,6 @@ export const StakingManagerAbi = [
       {
         type: "tuple",
         components: [
-          { name: "admin", type: "address" },
           { name: "rewardsRecipient", type: "address" },
         ],
       },
@@ -157,7 +156,6 @@ export const StakingProviderRegistryAbi = [
       {
         type: "tuple",
         components: [
-          { name: "admin", type: "address" },
           { name: "rewardsRecipient", type: "address" },
         ],
       },

@@ -324,7 +324,6 @@ export class OllaProtocolClient {
         pendingUnstakeAmount: stakingState.pendingUnstakeAmount,
       },
       providerConfig: {
-        admin: providerConfig.admin,
         rewardsRecipient: providerConfig.rewardsRecipient,
       },
       keyQueueLength,
