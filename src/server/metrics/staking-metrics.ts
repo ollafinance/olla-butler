@@ -53,13 +53,13 @@ export const initStakingMetrics = () => {
     }
   });
 
-  const hasExitableUnstakesGauge = createObservableGauge("has_exitable_unstakes", {
-    description: "Whether there are exitable unstakes ready to finalize (0/1)",
+  const hasFinalizedUnstakesGauge = createObservableGauge("has_finalized_unstakes", {
+    description: "Whether there are finalized unstakes ready to exit (0/1)",
   });
-  hasExitableUnstakesGauge.addCallback((result: ObservableResult<Attributes>) => {
+  hasFinalizedUnstakesGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
       if (state.stakingData) {
-        result.observe(state.stakingData.hasExitableUnstakes ? 1 : 0, { network });
+        result.observe(state.stakingData.hasFinalizedUnstakes ? 1 : 0, { network });
       }
     }
   });

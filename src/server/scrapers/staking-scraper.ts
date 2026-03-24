@@ -29,7 +29,7 @@ export class StakingScraper extends AbstractScraper {
         `ActiveAttesters: ${data.activatedAttesterCount} | ` +
         `PendingUnstake: ${data.pendingUnstakeCount} | ` +
         `KeyQueue: ${data.keyQueueLength} | ` +
-        `ExitableUnstakes: ${data.hasExitableUnstakes}`,
+        `FinalizedUnstakes: ${data.hasFinalizedUnstakes}`,
       );
     } catch (error) {
       console.error(`[${this.name}/${this.network}] Error during scrape:`, error);

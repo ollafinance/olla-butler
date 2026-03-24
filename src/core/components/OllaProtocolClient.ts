@@ -300,13 +300,13 @@ export class OllaProtocolClient {
   }
 
   async scrapeStakingData(): Promise<StakingData> {
-    const [totalStaked, pendingUnstakes, activatedAttesterCount, pendingUnstakeCount, hasExitableUnstakes, stakingState, providerConfig, keyQueueLength] =
+    const [totalStaked, pendingUnstakes, activatedAttesterCount, pendingUnstakeCount, hasFinalizedUnstakes, stakingState, providerConfig, keyQueueLength] =
       await Promise.all([
         this.stakingManagerContract.read.totalStaked(),
         this.stakingManagerContract.read.pendingUnstakes(),
         this.stakingManagerContract.read.getActivatedAttesterCount(),
         this.stakingManagerContract.read.getPendingUnstakeCount(),
-        this.stakingManagerContract.read.hasExitableUnstakes(),
+        this.stakingManagerContract.read.hasFinalizedUnstakes(),
         this.stakingManagerContract.read.getStakingState(),
         this.stakingManagerContract.read.getProviderConfig(),
         this.stakingProviderRegistryContract.read.getQueueLength(),
@@ -317,7 +317,7 @@ export class OllaProtocolClient {
       pendingUnstakes,
       activatedAttesterCount,
       pendingUnstakeCount,
-      hasExitableUnstakes,
+      hasFinalizedUnstakes,
       stakingState: {
         slashingDelta: stakingState.slashingDelta,
         stakedAmount: stakingState.stakedAmount,

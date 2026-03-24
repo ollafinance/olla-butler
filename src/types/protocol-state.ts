@@ -95,7 +95,7 @@ export type StakingData = {
   pendingUnstakes: bigint;
   activatedAttesterCount: bigint;
   pendingUnstakeCount: bigint;
-  hasExitableUnstakes: boolean;
+  hasFinalizedUnstakes: boolean;
   stakingState: StakingState;
   providerConfig: ProviderConfig;
   keyQueueLength: bigint;
