@@ -422,14 +422,16 @@ export class OllaProtocolClient {
   /**
    * Refreshes the canonical rollup address from the registry.
    * Should be called periodically to handle rollup upgrades.
+   * Returns the old and new addresses if a change was detected, null otherwise.
    */
-  async refreshCanonicalRollup(): Promise<void> {
+  async refreshCanonicalRollup(): Promise<{ oldAddress: string; newAddress: string } | null> {
     const canonicalRollupAddr = await this.rollupRegistryContract.read.getCanonicalRollup();
     const newAddr = getAddress(canonicalRollupAddr);
 
     if (this.addresses && newAddr.toLowerCase() !== this.addresses.canonicalRollup.toLowerCase()) {
+      const oldAddress = this.addresses.canonicalRollup;
       console.log(
-        `[OllaProtocolClient] Canonical rollup changed: ${this.addresses.canonicalRollup} → ${newAddr}`,
+        `[OllaProtocolClient] Canonical rollup changed: ${oldAddress} → ${newAddr}`,
       );
       this.addresses.canonicalRollup = newAddr;
       this.canonicalRollupContract = getContract({
@@ -437,6 +439,8 @@ export class OllaProtocolClient {
         abi: AztecRollupAbi,
         client: this.client,
       });
+      return { oldAddress, newAddress: newAddr };
     }
+    return null;
   }
 }

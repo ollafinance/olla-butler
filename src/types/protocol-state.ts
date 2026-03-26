@@ -199,6 +199,18 @@ export type RecentEvent = {
   args: Record<string, string>;
 };
 
+export type GovernanceEvent = {
+  eventName: string;
+  contract: string;
+  blockNumber: bigint;
+  transactionHash: string;
+  timestamp: Date;
+  parameter: string;
+  oldValue: string | null;
+  newValue: string;
+  category: "config_change" | "rollup_upgrade" | "implementation_upgrade" | "safety";
+};
+
 export type EventData = {
   lastProcessedBlock: bigint;
   // Critical safety
@@ -239,5 +251,6 @@ export type EventData = {
   // Other
   withdrawalAdjustedCount: number;
   configChangeCount: number;
+  implementationUpgradeCount: number;
   lastUpdated: Date;
 };

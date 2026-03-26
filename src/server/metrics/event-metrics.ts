@@ -175,6 +175,11 @@ export const initEventMetrics = () => {
     "Total protocol configuration change events",
     (d) => d.configChangeCount,
   );
+  eventGauge(
+    "implementation_upgrade_event_count",
+    "Total UUPS implementation upgrade events",
+    (d) => d.implementationUpgradeCount,
+  );
 
   // -- Watcher health --
   eventGauge(

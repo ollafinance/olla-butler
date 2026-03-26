@@ -4,6 +4,7 @@ import { resourceFromAttributes } from "@opentelemetry/resources";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { PACKAGE_NAME } from "../../core/config/index.js";
 import { handleEventsRequest } from "../api/events.js";
+import { handleGovernanceRequest } from "../api/governance.js";
 import http from "node:http";
 
 let exporter: PrometheusExporter | null = null;
@@ -46,6 +47,12 @@ export const initMetricsRegistry = (options: MetricsOptions) => {
       // Events endpoint — no auth required (read-only, non-sensitive)
       if (reqPath === "/events") {
         handleEventsRequest(req, res);
+        return;
+      }
+
+      // Governance endpoint — no auth required (read-only, non-sensitive)
+      if (reqPath === "/governance") {
+        handleGovernanceRequest(req, res);
         return;
       }
 
@@ -104,6 +111,11 @@ export const initMetricsRegistry = (options: MetricsOptions) => {
 
       if (reqPath === "/events") {
         handleEventsRequest(req, res);
+        return;
+      }
+
+      if (reqPath === "/governance") {
+        handleGovernanceRequest(req, res);
         return;
       }
 

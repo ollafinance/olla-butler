@@ -398,3 +398,15 @@ export const RewardsAccumulatorEventAbi = [
     inputs: [{ name: "amount", type: "uint256", indexed: true }],
   },
 ] as const;
+
+/**
+ * ERC-1967 Upgraded event — emitted by all UUPS upgradeable Olla contracts
+ * when their implementation is changed.
+ */
+export const ERC1967UpgradedEventAbi = [
+  {
+    type: "event",
+    name: "Upgraded",
+    inputs: [{ name: "implementation", type: "address", indexed: true }],
+  },
+] as const;

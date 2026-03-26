@@ -266,9 +266,10 @@ export const startServer = async (specificNetwork?: string) => {
 Active networks: ${Array.from(networkConfigs.keys()).join(", ")}
 
 Endpoints:
-  - Metrics: http://localhost:${metricsPort}/metrics
-  - Events:  http://localhost:${metricsPort}/events
-  - Health:  http://localhost:${metricsPort}/health
+  - Metrics:     http://localhost:${metricsPort}/metrics
+  - Events:      http://localhost:${metricsPort}/events
+  - Governance:  http://localhost:${metricsPort}/governance
+  - Health:      http://localhost:${metricsPort}/health
 
 All metrics include 'network' label for filtering.
 Metric prefix: olla_butler_*

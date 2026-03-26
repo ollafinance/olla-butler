@@ -3,6 +3,8 @@ import type { OllaProtocolClient } from "../../core/components/OllaProtocolClien
 import { updateAttesterData } from "../state/index.js";
 import { getStakingData } from "../state/index.js";
 import { getAttesters } from "../state/attester-registry.js";
+import { pushEvent } from "../state/event-log.js";
+import { pushGovernanceEvent } from "../state/governance-log.js";
 import {
   AztecAttesterStatus,
   type AttesterData,
@@ -32,7 +34,37 @@ export class AttesterScraper extends AbstractScraper {
   async scrape(): Promise<void> {
     try {
       // Refresh canonical rollup in case of upgrade
-      await this.protocolClient.refreshCanonicalRollup();
+      const rollupChange = await this.protocolClient.refreshCanonicalRollup();
+      if (rollupChange) {
+        const now = new Date();
+        // Emit as regular event (externally triggered, belongs in main log)
+        pushEvent(this.network, {
+          eventName: "CanonicalRollupUpgraded",
+          contract: "RollupRegistry",
+          blockNumber: 0n, // detected via polling, no specific block
+          transactionHash: "",
+          timestamp: now,
+          args: {
+            oldRollup: rollupChange.oldAddress,
+            newRollup: rollupChange.newAddress,
+          },
+        });
+        // Also emit as governance event for the governance log
+        pushGovernanceEvent(this.network, {
+          eventName: "CanonicalRollupUpgraded",
+          contract: "RollupRegistry",
+          blockNumber: 0n,
+          transactionHash: "",
+          timestamp: now,
+          parameter: "canonicalRollup",
+          oldValue: rollupChange.oldAddress,
+          newValue: rollupChange.newAddress,
+          category: "rollup_upgrade",
+        });
+        console.warn(
+          `[${this.name}/${this.network}] ROLLUP UPGRADE: ${rollupChange.oldAddress} → ${rollupChange.newAddress}`,
+        );
+      }
 
       const attesterAddresses = getAttesters(this.network);
       if (attesterAddresses.length === 0) {

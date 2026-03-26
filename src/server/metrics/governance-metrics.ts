@@ -7,6 +7,7 @@
 import type { Attributes, ObservableResult } from "@opentelemetry/api";
 import { createObservableGauge } from "./registry.js";
 import { getAllNetworkStates } from "../state/index.js";
+import { getAllGovernanceEvents } from "../state/governance-log.js";
 
 const WEI_DIVISOR = 1e18;
 
@@ -150,6 +151,40 @@ export const initGovernanceMetrics = () => {
       if (state.withdrawalQueueData) {
         result.observe(state.withdrawalQueueData.gasThreshold, { network });
       }
+    }
+  });
+
+  // === Governance event metrics ===
+
+  const govEventCountGauge = createObservableGauge("governance_event_count", {
+    description: "Total governance events tracked (config changes, upgrades, safety)",
+  });
+  govEventCountGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, events] of getAllGovernanceEvents().entries()) {
+      result.observe(events.length, { network });
+    }
+  });
+
+  const lastGovChangeTimestampGauge = createObservableGauge("last_governance_change_timestamp", {
+    description: "Unix timestamp of the most recent governance event",
+    unit: "seconds",
+  });
+  lastGovChangeTimestampGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, events] of getAllGovernanceEvents().entries()) {
+      if (events.length > 0) {
+        const last = events[events.length - 1]!;
+        result.observe(Math.floor(last.timestamp.getTime() / 1000), { network });
+      }
+    }
+  });
+
+  const rollupUpgradeCountGauge = createObservableGauge("rollup_upgrade_count", {
+    description: "Total canonical rollup upgrades detected",
+  });
+  rollupUpgradeCountGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, events] of getAllGovernanceEvents().entries()) {
+      const count = events.filter((e) => e.category === "rollup_upgrade").length;
+      result.observe(count, { network });
     }
   });
 

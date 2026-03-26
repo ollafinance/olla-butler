@@ -1,6 +1,6 @@
 import { type Address, type PublicClient, formatEther } from "viem";
 import { AbstractScraper } from "./base-scraper.js";
-import type { ContractAddresses, EventData, RecentEvent } from "../../types/index.js";
+import type { ContractAddresses, EventData, GovernanceEvent, RecentEvent } from "../../types/index.js";
 import {
   OllaCoreEventAbi,
   OllaVaultEventAbi,
@@ -8,9 +8,11 @@ import {
   StakingManagerEventAbi,
   WithdrawalQueueEventAbi,
   RewardsAccumulatorEventAbi,
+  ERC1967UpgradedEventAbi,
 } from "../../types/index.js";
 import { updateEventData } from "../state/index.js";
 import { pushEvents, getRecentEvents } from "../state/event-log.js";
+import { pushGovernanceEvents, getGovernanceEvents } from "../state/governance-log.js";
 import { addAttester, removeAttester } from "../state/attester-registry.js";
 import { getDataDir } from "../../core/config/index.js";
 import fs from "fs/promises";
@@ -69,6 +71,7 @@ function createEmptyEventData(): EventData {
     withdrawalFinalizedVolume: 0n,
     withdrawalAdjustedCount: 0,
     configChangeCount: 0,
+    implementationUpgradeCount: 0,
     lastUpdated: new Date(),
   };
 }
@@ -100,7 +103,7 @@ export class EventWatcher extends AbstractScraper {
     return path.join(getDataDir(), `event-watcher-${this.network}.json`);
   }
 
-  private async loadCheckpoint(): Promise<{ block: bigint; eventData: EventData | null; recentEvents: RecentEvent[] | null }> {
+  private async loadCheckpoint(): Promise<{ block: bigint; eventData: EventData | null; recentEvents: RecentEvent[] | null; governanceEvents: GovernanceEvent[] | null }> {
     try {
       const data = await fs.readFile(this.checkpointPath, "utf-8");
       const parsed = JSON.parse(data, bigintReviver);
@@ -108,9 +111,9 @@ export class EventWatcher extends AbstractScraper {
       // Support legacy format (only lastProcessedBlock)
       if (!parsed.eventData) {
         if (parsed.lastProcessedBlock) {
-          return { block: BigInt(parsed.lastProcessedBlock), eventData: null, recentEvents: null };
+          return { block: BigInt(parsed.lastProcessedBlock), eventData: null, recentEvents: null, governanceEvents: null };
         }
-        return { block: 0n, eventData: null, recentEvents: null };
+        return { block: 0n, eventData: null, recentEvents: null, governanceEvents: null };
       }
 
       const block = BigInt(parsed.lastProcessedBlock);
@@ -126,11 +129,19 @@ export class EventWatcher extends AbstractScraper {
           }))
         : null;
 
-      return { block, eventData, recentEvents };
+      // Restore governance events with Date objects
+      const governanceEvents: GovernanceEvent[] | null = parsed.governanceEvents
+        ? parsed.governanceEvents.map((e: GovernanceEvent & { timestamp: string }) => ({
+            ...e,
+            timestamp: new Date(e.timestamp),
+          }))
+        : null;
+
+      return { block, eventData, recentEvents, governanceEvents };
     } catch {
       // No checkpoint file or invalid — start fresh
     }
-    return { block: 0n, eventData: null, recentEvents: null };
+    return { block: 0n, eventData: null, recentEvents: null, governanceEvents: null };
   }
 
   private async saveCheckpoint(): Promise<void> {
@@ -144,6 +155,7 @@ export class EventWatcher extends AbstractScraper {
             lastProcessedBlock: this.lastProcessedBlock.toString(),
             eventData: this.eventData,
             recentEvents: getRecentEvents(this.network),
+            governanceEvents: getGovernanceEvents(this.network),
           },
           bigintReplacer,
         ),
@@ -171,6 +183,13 @@ export class EventWatcher extends AbstractScraper {
         pushEvents(this.network, checkpoint.recentEvents);
         console.log(
           `[${this.name}/${this.network}] Restored ${checkpoint.recentEvents.length} recent events from checkpoint`,
+        );
+      }
+
+      if (checkpoint.governanceEvents && checkpoint.governanceEvents.length > 0) {
+        pushGovernanceEvents(this.network, checkpoint.governanceEvents);
+        console.log(
+          `[${this.name}/${this.network}] Restored ${checkpoint.governanceEvents.length} governance events from checkpoint`,
         );
       }
 
@@ -290,10 +309,34 @@ export class EventWatcher extends AbstractScraper {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private toGovernanceEvent(
+    log: any,
+    contract: string,
+    blockTimestamps: Map<bigint, Date>,
+    parameter: string,
+    oldValue: string | null,
+    newValue: string,
+    category: GovernanceEvent["category"],
+  ): GovernanceEvent {
+    return {
+      eventName: log.eventName,
+      contract,
+      blockNumber: log.blockNumber,
+      transactionHash: log.transactionHash,
+      timestamp: blockTimestamps.get(log.blockNumber) ?? new Date(),
+      parameter,
+      oldValue,
+      newValue,
+      category,
+    };
+  }
+
   private async scrapeRange(fromBlock: bigint, toBlock: bigint): Promise<void> {
     const blockRange = { fromBlock, toBlock };
     const addr = this.addresses;
     const recentEvents: RecentEvent[] = [];
+    const govEvents: GovernanceEvent[] = [];
 
     const [coreResult, vaultResult, safetyResult, stakingResult, wqResult, raResult] =
       await Promise.allSettled([
@@ -367,15 +410,34 @@ export class EventWatcher extends AbstractScraper {
             );
             break;
           case "ProtocolFeeUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "protocolFeeBP", String(log.args.oldFeeBP), String(log.args.newFeeBP), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldFeeBP} → ${log.args.newFeeBP} at block ${log.blockNumber}`);
+            break;
           case "TreasuryFeeSplitUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "treasuryFeeSplitBP", String(log.args.oldSplitBP), String(log.args.newSplitBP), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldSplitBP} → ${log.args.newSplitBP} at block ${log.blockNumber}`);
+            break;
           case "TargetBufferedAssetsUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "targetBufferedAssets", formatEther(log.args.oldBuffer), formatEther(log.args.newBuffer), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${formatEther(log.args.oldBuffer)} → ${formatEther(log.args.newBuffer)} at block ${log.blockNumber}`);
+            break;
           case "RebalanceGasThresholdUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "rebalanceGasThreshold", String(log.args.oldThreshold), String(log.args.newThreshold), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldThreshold} → ${log.args.newThreshold} at block ${log.blockNumber}`);
+            break;
           case "SafetyModuleUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "safetyModule", String(log.args.oldSafetyModule), String(log.args.newSafetyModule), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldSafetyModule} → ${log.args.newSafetyModule} at block ${log.blockNumber}`);
+            break;
           case "RebalanceCooldownUpdated":
             this.eventData.configChangeCount++;
-            console.log(
-              `[${this.name}/${this.network}] Config change: ${log.eventName} at block ${log.blockNumber}`,
-            );
+            govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "rebalanceCooldown", String(log.args.oldCooldown), String(log.args.newCooldown), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldCooldown} → ${log.args.newCooldown} at block ${log.blockNumber}`);
             break;
         }
       }
@@ -411,9 +473,8 @@ export class EventWatcher extends AbstractScraper {
             break;
           case "InstantRedemptionFeeUpdated":
             this.eventData.configChangeCount++;
-            console.log(
-              `[${this.name}/${this.network}] Config change: ${log.eventName} at block ${log.blockNumber}`,
-            );
+            govEvents.push(this.toGovernanceEvent(log, "Vault", blockTimestamps, "instantRedemptionFeeBP", String(log.args.oldFeeBP), String(log.args.newFeeBP), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldFeeBP} → ${log.args.newFeeBP} at block ${log.blockNumber}`);
             break;
         }
       }
@@ -445,25 +506,42 @@ export class EventWatcher extends AbstractScraper {
           }
           case "Paused":
             this.eventData.safetyPausedCount++;
+            govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "isPaused", "false", "true", "safety"));
             console.warn(
               `[${this.name}/${this.network}] WARNING: SafetyModule PAUSED at block ${log.blockNumber}`,
             );
             break;
           case "Unpaused":
             this.eventData.safetyUnpausedCount++;
+            govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "isPaused", "true", "false", "safety"));
             console.log(
               `[${this.name}/${this.network}] SafetyModule unpaused at block ${log.blockNumber}`,
             );
             break;
           case "DepositCapUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "depositCap", null, formatEther(log.args.cap), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} → ${formatEther(log.args.cap)} at block ${log.blockNumber}`);
+            break;
           case "WithdrawalMinimumUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "withdrawalMinimum", null, formatEther(log.args.minimumShares), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} → ${formatEther(log.args.minimumShares)} at block ${log.blockNumber}`);
+            break;
           case "RateDropLimitUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "minRateDropBps", null, String(log.args.minRateDropBps), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} → ${log.args.minRateDropBps} at block ${log.blockNumber}`);
+            break;
           case "QueueRatioLimitUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "maxQueueRatioBps", null, String(log.args.maxQueueRatioBps), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} → ${log.args.maxQueueRatioBps} at block ${log.blockNumber}`);
+            break;
           case "AccountingDelayUpdated":
             this.eventData.configChangeCount++;
-            console.log(
-              `[${this.name}/${this.network}] Config change: ${log.eventName} at block ${log.blockNumber}`,
-            );
+            govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "maxAccountingDelay", null, String(log.args.maxAccountingDelay), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} → ${log.args.maxAccountingDelay} at block ${log.blockNumber}`);
             break;
         }
         recentEvents.push(recentEvent);
@@ -540,6 +618,11 @@ export class EventWatcher extends AbstractScraper {
               `[${this.name}/${this.network}] WARNING: WithdrawalAdjusted (slashing) request #${log.args.id} at block ${log.blockNumber}`,
             );
             break;
+          case "GasThresholdUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "WithdrawalQueue", blockTimestamps, "withdrawalQueueGasThreshold", String(log.args.oldThreshold), String(log.args.newThreshold), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldThreshold} → ${log.args.newThreshold} at block ${log.blockNumber}`);
+            break;
         }
       }
     } else {
@@ -562,6 +645,69 @@ export class EventWatcher extends AbstractScraper {
       );
     }
 
+    // -- ERC-1967 Upgraded events (UUPS implementation upgrades) --
+    const upgradeableContracts: [string, string][] = [
+      ["OllaCore", addr.core],
+      ["Vault", addr.vault],
+      ["StakingManager", addr.stakingManager],
+      ["RewardsAccumulator", addr.rewardsAccumulator],
+      ["SafetyModule", addr.safetyModule],
+      ["WithdrawalQueue", addr.withdrawalQueue],
+      ["StakingProviderRegistry", addr.stakingProviderRegistry],
+    ];
+
+    const upgradeResults = await Promise.allSettled(
+      upgradeableContracts.map(([, address]) =>
+        this.client.getContractEvents({
+          address: address as Address,
+          abi: ERC1967UpgradedEventAbi,
+          strict: true,
+          ...blockRange,
+        }),
+      ),
+    );
+
+    for (let i = 0; i < upgradeResults.length; i++) {
+      const result = upgradeResults[i]!;
+      const [contractName] = upgradeableContracts[i]!;
+      if (result.status === "fulfilled" && result.value.length > 0) {
+        // Fetch timestamps for upgrade events
+        const upgradeTimestamps = await this.fetchBlockTimestamps([result.value]);
+        totalEvents += result.value.length;
+        for (const log of result.value) {
+          this.eventData.implementationUpgradeCount++;
+          const newImpl = String(log.args.implementation);
+
+          // Add to main event log (externally triggered)
+          recentEvents.push({
+            eventName: "Upgraded",
+            contract: contractName,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            timestamp: upgradeTimestamps.get(log.blockNumber) ?? new Date(),
+            args: { implementation: newImpl },
+          });
+
+          // Add to governance log
+          govEvents.push({
+            eventName: "Upgraded",
+            contract: contractName,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+            timestamp: upgradeTimestamps.get(log.blockNumber) ?? new Date(),
+            parameter: "implementation",
+            oldValue: null,
+            newValue: newImpl,
+            category: "implementation_upgrade",
+          });
+
+          console.warn(
+            `[${this.name}/${this.network}] IMPLEMENTATION UPGRADE: ${contractName} → ${newImpl} at block ${log.blockNumber}`,
+          );
+        }
+      }
+    }
+
     // Update state
     this.lastProcessedBlock = toBlock;
     this.eventData.lastProcessedBlock = toBlock;
@@ -572,6 +718,12 @@ export class EventWatcher extends AbstractScraper {
     if (recentEvents.length > 0) {
       recentEvents.sort((a, b) => Number(a.blockNumber - b.blockNumber));
       pushEvents(this.network, recentEvents);
+    }
+
+    // Store governance events (sorted by block number)
+    if (govEvents.length > 0) {
+      govEvents.sort((a, b) => Number(a.blockNumber - b.blockNumber));
+      pushGovernanceEvents(this.network, govEvents);
     }
 
     // Periodically persist checkpoint to disk so events aren't lost on restart

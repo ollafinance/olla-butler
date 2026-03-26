@@ -15,6 +15,7 @@ export {
   StakingManagerEventAbi,
   WithdrawalQueueEventAbi,
   RewardsAccumulatorEventAbi,
+  ERC1967UpgradedEventAbi,
 } from "./event-abis.js";
 
 export {
@@ -35,6 +36,7 @@ export {
   type WithdrawalQueueData,
   type ContractAddresses,
   type RecentEvent,
+  type GovernanceEvent,
   type EventData,
   type AttesterExitState,
   type AttesterState,
