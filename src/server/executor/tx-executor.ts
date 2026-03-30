@@ -15,7 +15,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createTransport, SUPPORTED_CHAINS } from "../../core/components/transport.js";
-import { OllaCoreWriteAbi, StakingManagerWriteAbi } from "../../types/write-abis.js";
+import { OllaCoreWriteAbi, StakingManagerWriteAbi, AztecRollupWriteAbi } from "../../types/write-abis.js";
 import type { ContractAddresses } from "../../types/index.js";
 
 /**
@@ -245,6 +245,45 @@ export class TransactionExecutor {
 
     if (receipt.status === "reverted") {
       throw new Error(`refreshAttesterState([${addr}]) reverted in block ${receipt.blockNumber} (tx: ${hash})`);
+    }
+
+    return hash;
+  }
+
+  /**
+   * Calls Rollup.flushEntryQueue() on the canonical rollup contract.
+   * Processes pending attesters from the entry queue into the active set.
+   */
+  async flushEntryQueue(): Promise<string> {
+    const rollupAddr = getAddress(this.addresses.canonicalRollup);
+    console.log(`[TxExecutor] Sending flushEntryQueue() to ${rollupAddr}...`);
+
+    const gas = await this.estimateGasWithFloor({
+      address: rollupAddr,
+      abi: AztecRollupWriteAbi,
+      functionName: "flushEntryQueue",
+      args: [],
+    });
+
+    const hash = await this.walletClient.writeContract({
+      account: this.account,
+      chain: this.chain,
+      address: rollupAddr,
+      abi: AztecRollupWriteAbi,
+      functionName: "flushEntryQueue",
+      args: [],
+      gas,
+    });
+    console.log(`[TxExecutor] flushEntryQueue tx sent: ${hash}`);
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+    console.log(
+      `[TxExecutor] flushEntryQueue confirmed in block ${receipt.blockNumber} | ` +
+      `gas used: ${receipt.gasUsed} | status: ${receipt.status}`,
+    );
+
+    if (receipt.status === "reverted") {
+      throw new Error(`flushEntryQueue() reverted in block ${receipt.blockNumber} (tx: ${hash})`);
     }
 
     return hash;

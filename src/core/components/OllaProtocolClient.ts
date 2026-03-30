@@ -379,6 +379,17 @@ export class OllaProtocolClient {
   }
 
   /**
+   * Returns true if the rollup entry queue can be flushed (current epoch >= next flushable epoch).
+   */
+  async canFlushEntryQueue(): Promise<boolean> {
+    const [currentEpoch, nextFlushableEpoch] = await Promise.all([
+      this.canonicalRollupContract.read.getCurrentEpoch(),
+      this.canonicalRollupContract.read.getNextFlushableEpoch(),
+    ]);
+    return currentEpoch >= nextFlushableEpoch;
+  }
+
+  /**
    * Queries the Aztec rollup for attester state.
    * Tries the canonical rollup first; for attesters showing NONE status,
    * falls back to historical rollup versions (for exiting attesters on old rollups).

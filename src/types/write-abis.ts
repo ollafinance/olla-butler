@@ -38,6 +38,16 @@ export const OllaCoreWriteAbi = [
   },
 ] as const;
 
+export const AztecRollupWriteAbi = [
+  {
+    type: "function",
+    name: "flushEntryQueue",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
 export const StakingManagerWriteAbi = [
   {
     type: "function",

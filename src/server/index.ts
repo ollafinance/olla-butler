@@ -34,6 +34,7 @@ import {
   AccountingUpdateTask,
   RebalanceTask,
   ExecutorBalanceScraper,
+  EntryQueueFlushTask,
 } from "./executor/index.js";
 import type { Address } from "viem";
 
@@ -112,9 +113,13 @@ async function initializeNetwork(
     console.log(`[${network}] Executor address: ${txExecutor.getExecutorAddress()}`);
 
     // Attester refresh: check every 60s, only executes when stale attesters detected
+    // Entry queue flush: check every 60s, flushes once when queued attesters are detected
     if (config.ATTESTER_SCAN_START_BLOCK !== undefined) {
       const attesterRefreshTask = new AttesterRefreshTask(network, txExecutor);
       scraperManager.register(attesterRefreshTask, 60_000);
+
+      const entryQueueFlushTask = new EntryQueueFlushTask(network, txExecutor, protocolClient);
+      scraperManager.register(entryQueueFlushTask, 60_000);
     }
 
     // Accounting update: check every 5 minutes, only executes when stale (>4h)
