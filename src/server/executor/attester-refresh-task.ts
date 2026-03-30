@@ -58,33 +58,39 @@ export class AttesterRefreshTask extends AbstractScraper {
     }
 
     const now = Date.now();
-    for (const stale of toRefresh) {
+    const batch = toRefresh.filter((stale) => {
       const lastRefresh = this.lastRefreshTime.get(stale.address) ?? 0;
-      if (now - lastRefresh < PER_ATTESTER_COOLDOWN_MS) {
-        continue;
-      }
+      return now - lastRefresh >= PER_ATTESTER_COOLDOWN_MS;
+    });
 
-      try {
+    if (batch.length === 0) {
+      return;
+    }
+
+    try {
+      for (const stale of batch) {
         console.log(
           `[${this.name}/${this.network}] Refreshing attester ${stale.address} | reasons: ${stale.reasons.join(", ")}`,
         );
-        await this.executor.refreshAttester(stale.address);
-        this.lastRefreshTime.set(stale.address, now);
+      }
 
-        // Mark queued attesters as refreshed so we don't repeat
+      await this.executor.refreshAttesters(batch.map((s) => s.address));
+
+      for (const stale of batch) {
+        this.lastRefreshTime.set(stale.address, now);
         if (stale.reasons.includes("queued")) {
           this.refreshedQueued.add(stale.address);
         }
-
-        console.log(
-          `[${this.name}/${this.network}] Successfully refreshed attester ${stale.address}`,
-        );
-      } catch (error) {
-        console.error(
-          `[${this.name}/${this.network}] Failed to refresh attester ${stale.address}:`,
-          error,
-        );
       }
+
+      console.log(
+        `[${this.name}/${this.network}] Successfully refreshed ${batch.length} attester(s)`,
+      );
+    } catch (error) {
+      console.error(
+        `[${this.name}/${this.network}] Failed to refresh ${batch.length} attester(s):`,
+        error,
+      );
     }
   }
 }

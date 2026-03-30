@@ -213,17 +213,18 @@ export class TransactionExecutor {
 
   /**
    * Calls StakingManager.refreshAttesterState(address[])
+   * Accepts one or more attester addresses to refresh in a single tx.
    */
-  async refreshAttester(attesterAddress: string): Promise<string> {
+  async refreshAttesters(attesterAddresses: string[]): Promise<string> {
     const stakingAddr = getAddress(this.addresses.stakingManager);
-    const addr = getAddress(attesterAddress);
-    console.log(`[TxExecutor] Sending refreshAttesterState([${addr}]) to ${stakingAddr}...`);
+    const addrs = attesterAddresses.map((a) => getAddress(a));
+    console.log(`[TxExecutor] Sending refreshAttesterState([${addrs.join(", ")}]) to ${stakingAddr}...`);
 
     const gas = await this.estimateGasWithFloor({
       address: stakingAddr,
       abi: StakingManagerWriteAbi,
       functionName: "refreshAttesterState",
-      args: [[addr]],
+      args: [addrs],
     });
 
     const hash = await this.walletClient.writeContract({
@@ -232,19 +233,19 @@ export class TransactionExecutor {
       address: stakingAddr,
       abi: StakingManagerWriteAbi,
       functionName: "refreshAttesterState",
-      args: [[addr]],
+      args: [addrs],
       gas,
     });
     console.log(`[TxExecutor] refreshAttesterState tx sent: ${hash}`);
 
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
     console.log(
-      `[TxExecutor] refreshAttesterState([${addr}]) confirmed in block ${receipt.blockNumber} | ` +
+      `[TxExecutor] refreshAttesterState([${addrs.join(", ")}]) confirmed in block ${receipt.blockNumber} | ` +
       `gas used: ${receipt.gasUsed} | status: ${receipt.status}`,
     );
 
     if (receipt.status === "reverted") {
-      throw new Error(`refreshAttesterState([${addr}]) reverted in block ${receipt.blockNumber} (tx: ${hash})`);
+      throw new Error(`refreshAttesterState([${addrs.join(", ")}]) reverted in block ${receipt.blockNumber} (tx: ${hash})`);
     }
 
     return hash;
