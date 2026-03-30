@@ -255,5 +255,6 @@ export type EventData = {
   withdrawalAdjustedCount: number;
   configChangeCount: number;
   implementationUpgradeCount: number;
+  lastRebalanceTimestamp: Date | null;
   lastUpdated: Date;
 };

@@ -131,6 +131,20 @@ export const initDerivedMetrics = () => {
     }
   });
 
+  // Time since last rebalance
+  const rebalanceTimeSinceGauge = createObservableGauge("rebalance_time_since_seconds", {
+    description: "Seconds since the last Rebalanced event",
+    unit: "seconds",
+  });
+  rebalanceTimeSinceGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, state] of getAllNetworkStates().entries()) {
+      if (state.eventData?.lastRebalanceTimestamp) {
+        const ageMs = Date.now() - state.eventData.lastRebalanceTimestamp.getTime();
+        result.observe(Math.floor(ageMs / 1000), { network });
+      }
+    }
+  });
+
   // Net flow since last report
   const netFlowSinceReportGauge = createObservableGauge("net_flow_since_report", {
     description: "Net deposits minus withdrawals since last accounting update (token units)",

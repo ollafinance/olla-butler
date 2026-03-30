@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventWatcher } from "../event-watcher.js";
 import type { ContractAddresses, EventData } from "../../../types/index.js";
 import * as stateModule from "../../state/index.js";
+import os from "os";
+import path from "node:path";
+
+// Mock getDataDir to use a temp directory so tests don't load real checkpoint files
+const testDataDir = path.join(os.tmpdir(), `olla-test-${process.pid}`);
+vi.mock("../../../core/config/index.js", () => ({
+  getDataDir: () => testDataDir,
+}));
 
 // Mock state module to capture updateEventData calls
 vi.mock("../../state/index.js", async (importOriginal) => {
@@ -15,6 +23,16 @@ vi.mock("../../state/index.js", async (importOriginal) => {
 vi.mock("../../state/attester-registry.js", () => ({
   addAttester: vi.fn(),
   removeAttester: vi.fn(),
+}));
+
+vi.mock("../../state/event-log.js", () => ({
+  pushEvents: vi.fn(),
+  getRecentEvents: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock("../../state/governance-log.js", () => ({
+  pushGovernanceEvents: vi.fn(),
+  getGovernanceEvents: vi.fn().mockReturnValue([]),
 }));
 
 const mockAddresses: ContractAddresses = {
@@ -42,13 +60,28 @@ function createMockClient(overrides: {
 
   return {
     getBlockNumber: vi.fn().mockResolvedValue(blockNumber),
-    getContractEvents: vi.fn().mockImplementation(({ address }: { address: string }) => {
+    getBlock: vi.fn().mockImplementation(({ blockNumber: bn }: { blockNumber: bigint }) =>
+      Promise.resolve({ timestamp: BigInt(Math.floor(Date.now() / 1000)) }),
+    ),
+    getContractEvents: vi.fn().mockImplementation(({ address, abi }: { address: string; abi: unknown[] }) => {
       if (failingContracts.has(address)) {
         return Promise.reject(new Error(`RPC error for ${address}`));
+      }
+      // Only return test events for the primary contract ABIs, not ERC1967 upgrade queries.
+      // ERC1967 upgrade ABI has a single "Upgraded" event — detect by ABI length (1 entry).
+      if (Array.isArray(abi) && abi.length === 1) {
+        return Promise.resolve([]);
       }
       return Promise.resolve(eventResults[address] ?? []);
     }),
   } as unknown as import("viem").PublicClient;
+}
+
+/** Get the last updateEventData call's EventData (scrapeRange + scrape both call it) */
+function getLastEventData(): EventData {
+  const calls = (stateModule.updateEventData as ReturnType<typeof vi.fn>).mock.calls;
+  expect(calls.length).toBeGreaterThanOrEqual(1);
+  return calls[calls.length - 1]![1] as EventData;
 }
 
 describe("EventWatcher", () => {
@@ -78,9 +111,7 @@ describe("EventWatcher", () => {
 
     await watcher.scrape();
 
-    const calls = (stateModule.updateEventData as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls.length).toBe(1);
-    const data = calls[0]![1] as EventData;
+    const data = getLastEventData();
     expect(data.depositCount).toBe(1);
     expect(data.depositVolume).toBe(5_000_000_000_000_000_000n);
   });
@@ -102,8 +133,7 @@ describe("EventWatcher", () => {
 
     await watcher.scrape();
 
-    const calls = (stateModule.updateEventData as ReturnType<typeof vi.fn>).mock.calls;
-    const data = calls[0]![1] as EventData;
+    const data = getLastEventData();
     expect(data.circuitBreakerTriggeredCount).toBe(2);
     expect(data.circuitBreakerByReason.rateDrop).toBe(1);
     expect(data.circuitBreakerByReason.queueRatio).toBe(1);
@@ -132,8 +162,7 @@ describe("EventWatcher", () => {
     // Should not throw
     await watcher.scrape();
 
-    const calls = (stateModule.updateEventData as ReturnType<typeof vi.fn>).mock.calls;
-    const data = calls[0]![1] as EventData;
+    const data = getLastEventData();
     // Deposit from vault still recorded despite core/staking failures
     expect(data.depositCount).toBe(1);
   });
@@ -153,8 +182,8 @@ describe("EventWatcher", () => {
     const getContractEventsCalls = (mockClient.getContractEvents as ReturnType<typeof vi.fn>).mock.calls;
     expect(getContractEventsCalls.length).toBeGreaterThan(0);
     const firstCall = getContractEventsCalls[0]![0] as { fromBlock: bigint; toBlock: bigint };
-    // fromBlock should be 20000 - 10000 = 10000
-    expect(firstCall.fromBlock).toBe(10_000n);
-    expect(firstCall.toBlock).toBe(20_000n);
+    // First chunk: 101 to 10100
+    expect(firstCall.fromBlock).toBe(101n);
+    expect(firstCall.toBlock).toBe(10_100n);
   });
 });

@@ -73,6 +73,7 @@ function createEmptyEventData(): EventData {
     withdrawalAdjustedCount: 0,
     configChangeCount: 0,
     implementationUpgradeCount: 0,
+    lastRebalanceTimestamp: null,
     lastUpdated: new Date(),
   };
 }
@@ -398,6 +399,7 @@ export class EventWatcher extends AbstractScraper {
             break;
           case "Rebalanced":
             this.eventData.rebalanceCount++;
+            this.eventData.lastRebalanceTimestamp = blockTimestamps.get(log.blockNumber) ?? new Date();
             break;
           case "NegativeRewardsPeriod":
             this.eventData.negativeRewardsPeriodCount++;
