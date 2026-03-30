@@ -72,6 +72,13 @@ export class TransactionExecutor {
   }
 
   /**
+   * Returns the native (ETH) balance of the executor address.
+   */
+  async getBalance(): Promise<bigint> {
+    return this.publicClient.getBalance({ address: this.executorAddress });
+  }
+
+  /**
    * Estimates gas for a contract call and returns the greater of the estimate or GAS_FLOOR.
    */
   private async estimateGasWithFloor(args: {

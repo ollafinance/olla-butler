@@ -21,6 +21,12 @@ import type {
   AttesterData,
 } from "../../types/index.js";
 
+export type ExecutorData = {
+  address: string;
+  balance: bigint;
+  lastUpdated: Date;
+};
+
 export type NetworkState = {
   coreData: CoreData | null;
   vaultData: VaultData | null;
@@ -30,6 +36,7 @@ export type NetworkState = {
   contractAddresses: ContractAddresses | null;
   eventData: EventData | null;
   attesterData: AttesterData | null;
+  executorData: ExecutorData | null;
   previousExchangeRate: bigint | null;
   previousExchangeRateTimestamp: Date | null;
 };
@@ -48,6 +55,7 @@ const getNetworkState = (network: string): NetworkState => {
       contractAddresses: null,
       eventData: null,
       attesterData: null,
+      executorData: null,
       previousExchangeRate: null,
       previousExchangeRateTimestamp: null,
     };
@@ -148,4 +156,14 @@ export const updateAttesterData = (network: string, data: AttesterData) => {
 
 export const getAttesterData = (network: string): AttesterData | null => {
   return getNetworkState(network).attesterData;
+};
+
+// Executor data
+export const updateExecutorData = (network: string, data: ExecutorData) => {
+  const state = getNetworkState(network);
+  state.executorData = data;
+};
+
+export const getExecutorData = (network: string): ExecutorData | null => {
+  return getNetworkState(network).executorData;
 };

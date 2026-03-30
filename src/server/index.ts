@@ -12,6 +12,7 @@ import {
   initScraperHealthMetrics,
   initAttesterMetrics,
   initGovernanceMetrics,
+  initExecutorMetrics,
   getMetricsRegistry,
 } from "./metrics/index.js";
 import {
@@ -32,6 +33,7 @@ import {
   AttesterRefreshTask,
   AccountingUpdateTask,
   RebalanceTask,
+  ExecutorBalanceScraper,
 } from "./executor/index.js";
 import type { Address } from "viem";
 
@@ -123,6 +125,10 @@ async function initializeNetwork(
     const rebalanceTask = new RebalanceTask(network, txExecutor, protocolClient);
     scraperManager.register(rebalanceTask, 15 * 60_000);
 
+    // Executor balance: check every 5 minutes
+    const balanceScraper = new ExecutorBalanceScraper(network, txExecutor);
+    scraperManager.register(balanceScraper, 5 * 60_000);
+
     console.log(`[${network}] Transaction executor tasks registered`);
   } else if (config.TX_EXECUTOR_ENABLED && !config.BUTLER_PRIVATE_KEY) {
     console.warn(`[${network}] TX_EXECUTOR_ENABLED is true but BUTLER_PRIVATE_KEY is not set — executor disabled`);
@@ -199,6 +205,7 @@ export const startServer = async (specificNetwork?: string) => {
   initDerivedMetrics();
   initAttesterMetrics();
   initGovernanceMetrics();
+  initExecutorMetrics();
   initScraperHealthMetrics();
 
   const scraperManager = new ScraperManager();

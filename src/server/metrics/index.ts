@@ -14,3 +14,4 @@ export { initDerivedMetrics } from "./derived-metrics.js";
 export { initScraperHealthMetrics } from "./scraper-health-metrics.js";
 export { initAttesterMetrics } from "./attester-metrics.js";
 export { initGovernanceMetrics } from "./governance-metrics.js";
+export { initExecutorMetrics } from "./executor-metrics.js";
