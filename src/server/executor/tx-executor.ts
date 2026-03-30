@@ -18,6 +18,13 @@ import { createTransport, SUPPORTED_CHAINS } from "../../core/components/transpo
 import { OllaCoreWriteAbi, StakingManagerWriteAbi } from "../../types/write-abis.js";
 import type { ContractAddresses } from "../../types/index.js";
 
+/**
+ * Minimum gas limit for all transactions.
+ * Prevents gas estimation from underestimating for functions that use hasGasLeft() checks.
+ * The estimate is still used when it exceeds this floor.
+ */
+const GAS_FLOOR = 500_000n;
+
 export interface TransactionExecutorConfig {
   rpcUrl: string;
   chainId: number;
@@ -65,11 +72,34 @@ export class TransactionExecutor {
   }
 
   /**
+   * Estimates gas for a contract call and returns the greater of the estimate or GAS_FLOOR.
+   */
+  private async estimateGasWithFloor(args: {
+    address: Address;
+    abi: readonly unknown[];
+    functionName: string;
+    args?: readonly unknown[];
+  }): Promise<bigint> {
+    const estimate = await this.publicClient.estimateContractGas({
+      account: this.account,
+      ...args,
+    });
+    return estimate > GAS_FLOOR ? estimate : GAS_FLOOR;
+  }
+
+  /**
    * Calls OllaCore.updateAccounting()
    */
   async updateAccounting(): Promise<string> {
     const coreAddr = getAddress(this.addresses.core);
     console.log(`[TxExecutor] Sending updateAccounting() to ${coreAddr}...`);
+
+    const gas = await this.estimateGasWithFloor({
+      address: coreAddr,
+      abi: OllaCoreWriteAbi,
+      functionName: "updateAccounting",
+      args: [],
+    });
 
     const hash = await this.walletClient.writeContract({
       account: this.account,
@@ -78,6 +108,7 @@ export class TransactionExecutor {
       abi: OllaCoreWriteAbi,
       functionName: "updateAccounting",
       args: [],
+      gas,
     });
     console.log(`[TxExecutor] updateAccounting tx sent: ${hash}`);
 
@@ -102,6 +133,13 @@ export class TransactionExecutor {
     const coreAddr = getAddress(this.addresses.core);
     console.log(`[TxExecutor] Sending rebalance() to ${coreAddr}...`);
 
+    const gas = await this.estimateGasWithFloor({
+      address: coreAddr,
+      abi: OllaCoreWriteAbi,
+      functionName: "rebalance",
+      args: [],
+    });
+
     const hash = await this.walletClient.writeContract({
       account: this.account,
       chain: this.chain,
@@ -109,6 +147,7 @@ export class TransactionExecutor {
       abi: OllaCoreWriteAbi,
       functionName: "rebalance",
       args: [],
+      gas,
     });
     console.log(`[TxExecutor] rebalance tx sent: ${hash}`);
 
@@ -134,6 +173,13 @@ export class TransactionExecutor {
     const addr = getAddress(attesterAddress);
     console.log(`[TxExecutor] Sending purgeFailedQueueEntry(${addr}) to ${stakingAddr}...`);
 
+    const gas = await this.estimateGasWithFloor({
+      address: stakingAddr,
+      abi: StakingManagerWriteAbi,
+      functionName: "purgeFailedQueueEntry",
+      args: [addr],
+    });
+
     const hash = await this.walletClient.writeContract({
       account: this.account,
       chain: this.chain,
@@ -141,6 +187,7 @@ export class TransactionExecutor {
       abi: StakingManagerWriteAbi,
       functionName: "purgeFailedQueueEntry",
       args: [addr],
+      gas,
     });
     console.log(`[TxExecutor] purgeFailedQueueEntry tx sent: ${hash}`);
 
@@ -165,6 +212,13 @@ export class TransactionExecutor {
     const addr = getAddress(attesterAddress);
     console.log(`[TxExecutor] Sending refreshAttesterState([${addr}]) to ${stakingAddr}...`);
 
+    const gas = await this.estimateGasWithFloor({
+      address: stakingAddr,
+      abi: StakingManagerWriteAbi,
+      functionName: "refreshAttesterState",
+      args: [[addr]],
+    });
+
     const hash = await this.walletClient.writeContract({
       account: this.account,
       chain: this.chain,
@@ -172,6 +226,7 @@ export class TransactionExecutor {
       abi: StakingManagerWriteAbi,
       functionName: "refreshAttesterState",
       args: [[addr]],
+      gas,
     });
     console.log(`[TxExecutor] refreshAttesterState tx sent: ${hash}`);
 
