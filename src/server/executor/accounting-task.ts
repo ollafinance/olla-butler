@@ -9,6 +9,7 @@
 
 import { AbstractScraper } from "../scrapers/base-scraper.js";
 import { getCoreData, getSafetyModuleData } from "../state/index.js";
+import { RebalanceStep } from "../../types/index.js";
 import type { TransactionExecutor } from "./tx-executor.js";
 
 /** Safety margin subtracted from on-chain maxAccountingDelay: 15 minutes */
@@ -48,6 +49,11 @@ export class AccountingUpdateTask extends AbstractScraper {
   async scrape(): Promise<void> {
     const coreData = getCoreData(this.network);
     if (!coreData) {
+      return;
+    }
+
+    // Skip if a rebalance is in progress — the contract reverts updateAccounting() during rebalance
+    if (coreData.rebalanceProgress.step !== RebalanceStep.Done) {
       return;
     }
 

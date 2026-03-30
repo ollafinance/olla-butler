@@ -65,6 +65,7 @@ function createEmptyEventData(): EventData {
     unstakeFinalizedVolume: 0n,
     attesterRefreshCount: 0,
     attesterRefreshBalanceChangeCount: 0,
+    failedQueuePurgedCount: 0,
     withdrawalRequestedCount: 0,
     withdrawalRequestedVolume: 0n,
     withdrawalFinalizedCount: 0,
@@ -587,6 +588,15 @@ export class EventWatcher extends AbstractScraper {
                 `[${this.name}/${this.network}] AttesterStateRefreshed: ${args.attester} balance ${args.oldBalance} → ${args.newBalance} at block ${log.blockNumber}`,
               );
             }
+            break;
+          }
+          case "FailedQueueEntryPurged": {
+            this.eventData.failedQueuePurgedCount++;
+            const args = log.args as { attester: string; recoveredAmount: bigint };
+            removeAttester(this.network, args.attester);
+            console.warn(
+              `[${this.name}/${this.network}] FailedQueueEntryPurged: ${args.attester} recovered ${formatEther(args.recoveredAmount)} at block ${log.blockNumber}`,
+            );
             break;
           }
         }

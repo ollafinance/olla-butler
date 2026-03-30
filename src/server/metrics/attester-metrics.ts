@@ -36,6 +36,17 @@ export const initAttesterMetrics = () => {
     }
   });
 
+  const rollupAttesterQueuedGauge = createObservableGauge("rollup_attester_queued_count", {
+    description: "Number of attesters in Queued status (deposited on rollup, pending activation)",
+  });
+  rollupAttesterQueuedGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, state] of getAllNetworkStates().entries()) {
+      if (state.attesterData) {
+        result.observe(state.attesterData.rollupQueuedCount, { network });
+      }
+    }
+  });
+
   const rollupAttesterZombieGauge = createObservableGauge("rollup_attester_zombie_count", {
     description: "Number of attesters in ZOMBIE (slashed) status on rollup",
   });

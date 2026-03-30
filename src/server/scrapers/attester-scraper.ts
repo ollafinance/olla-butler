@@ -1,6 +1,6 @@
 import { AbstractScraper } from "./base-scraper.js";
 import type { OllaProtocolClient } from "../../core/components/OllaProtocolClient.js";
-import { updateAttesterData } from "../state/index.js";
+import { updateAttesterData, getAttesterData } from "../state/index.js";
 import { getStakingData } from "../state/index.js";
 import { getAttesters } from "../state/attester-registry.js";
 import { pushEvent } from "../state/event-log.js";
@@ -78,7 +78,8 @@ export class AttesterScraper extends AbstractScraper {
       ]);
 
       const stakingData = getStakingData(this.network);
-      const data = computeAttesterData(attesters, activationThreshold, stakingData?.stakingState.stakedAmount);
+      const previousAttesterData = getAttesterData(this.network);
+      const data = computeAttesterData(attesters, activationThreshold, stakingData?.stakingState.stakedAmount, previousAttesterData ?? undefined);
       updateAttesterData(this.network, data);
 
       const staleCount = data.staleAttesters.length;
@@ -89,6 +90,7 @@ export class AttesterScraper extends AbstractScraper {
       console.log(
         `[${this.name}/${this.network}] Attesters: ${attesters.length} | ` +
         `Active: ${data.rollupActiveCount} | ` +
+        `Queued: ${data.rollupQueuedCount} | ` +
         `Exiting: ${data.rollupExitingCount} | ` +
         `Zombie: ${data.rollupZombieCount} | ` +
         `Exitable: ${data.exitableAttesterCount} | ` +
@@ -124,11 +126,13 @@ export function computeAttesterData(
   attesters: AttesterState[],
   activationThreshold: bigint,
   cachedStakedAmount?: bigint,
+  previousData?: AttesterData,
 ): AttesterData {
   let rollupTotalEffectiveBalance = 0n;
   let rollupActiveCount = 0;
   let rollupExitingCount = 0;
   let rollupZombieCount = 0;
+  let rollupQueuedCount = 0;
   let exitableAttesterCount = 0;
   const staleAttesters: StaleAttester[] = [];
 
@@ -207,12 +211,42 @@ export function computeAttesterData(
     ? absDiff(cachedStakedAmount, rollupTotalEffectiveBalance)
     : 0n;
 
-  // Reclassify fully_exited → pending_activation when Olla has more staked than rollup shows
+  // Reclassify fully_exited → queued when Olla has more staked than rollup shows
+  // (attester is in the StakingManager's Queued state, waiting for rollup activation)
   if (cachedStakedAmount !== undefined && cachedStakedAmount > rollupTotalEffectiveBalance) {
     for (const stale of staleAttesters) {
       const idx = stale.reasons.indexOf("fully_exited");
       if (idx !== -1) {
-        stale.reasons[idx] = "pending_activation";
+        stale.reasons[idx] = "queued";
+        rollupQueuedCount++;
+      }
+    }
+  }
+
+  // Detect queued → active transitions: attester was previously queued but is now VALIDATING on rollup
+  if (previousData) {
+    const previouslyQueued = new Set(
+      previousData.staleAttesters
+        .filter((s) => s.reasons.includes("queued"))
+        .map((s) => s.address),
+    );
+
+    for (const attester of attesters) {
+      if (
+        previouslyQueued.has(attester.address) &&
+        attester.status === AztecAttesterStatus.VALIDATING
+      ) {
+        // Attester just got activated on the rollup — needs refresh to sync Olla's cache
+        const existing = staleAttesters.find((s) => s.address === attester.address);
+        if (existing) {
+          existing.reasons.push("pending_activation");
+        } else {
+          staleAttesters.push({
+            address: attester.address,
+            reasons: ["pending_activation"],
+            slashingLoss: 0n,
+          });
+        }
       }
     }
   }
@@ -223,6 +257,7 @@ export function computeAttesterData(
     rollupActiveCount,
     rollupExitingCount,
     rollupZombieCount,
+    rollupQueuedCount,
     activationThreshold,
     cachedVsRollupBalanceDrift,
     staleAttesters,

@@ -46,4 +46,16 @@ export const StakingManagerWriteAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  {
+    type: "function",
+    name: "purgeFailedQueueEntry",
+    inputs: [{ name: "attester", type: "address" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "error",
+    name: "StakingManager__NotFailedQueueEntry",
+    inputs: [{ name: "attester", type: "address" }],
+  },
 ] as const;

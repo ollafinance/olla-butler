@@ -126,6 +126,38 @@ export class TransactionExecutor {
   }
 
   /**
+   * Calls StakingManager.purgeFailedQueueEntry(address)
+   * Removes an attester whose deposit failed during the rollup's entry queue flush.
+   */
+  async purgeFailedQueueEntry(attesterAddress: string): Promise<string> {
+    const stakingAddr = getAddress(this.addresses.stakingManager);
+    const addr = getAddress(attesterAddress);
+    console.log(`[TxExecutor] Sending purgeFailedQueueEntry(${addr}) to ${stakingAddr}...`);
+
+    const hash = await this.walletClient.writeContract({
+      account: this.account,
+      chain: this.chain,
+      address: stakingAddr,
+      abi: StakingManagerWriteAbi,
+      functionName: "purgeFailedQueueEntry",
+      args: [addr],
+    });
+    console.log(`[TxExecutor] purgeFailedQueueEntry tx sent: ${hash}`);
+
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+    console.log(
+      `[TxExecutor] purgeFailedQueueEntry(${addr}) confirmed in block ${receipt.blockNumber} | ` +
+      `gas used: ${receipt.gasUsed} | status: ${receipt.status}`,
+    );
+
+    if (receipt.status === "reverted") {
+      throw new Error(`purgeFailedQueueEntry(${addr}) reverted in block ${receipt.blockNumber} (tx: ${hash})`);
+    }
+
+    return hash;
+  }
+
+  /**
    * Calls StakingManager.refreshAttesterState(address[])
    */
   async refreshAttester(attesterAddress: string): Promise<string> {

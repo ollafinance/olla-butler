@@ -142,6 +142,12 @@ export const initEventMetrics = () => {
     (d) => Number(d.unstakeFinalizedVolume) / WEI_DIVISOR,
   );
 
+  eventGauge(
+    "failed_queue_purged_event_count",
+    "Total FailedQueueEntryPurged events",
+    (d) => d.failedQueuePurgedCount,
+  );
+
   // -- Withdrawal queue --
   eventGauge(
     "withdrawal_requested_event_count",

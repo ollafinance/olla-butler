@@ -169,6 +169,7 @@ export type AttesterStalenessReason =
   | "exit_exitable"
   | "zombie"
   | "fully_exited"
+  | "queued"
   | "pending_activation";
 
 export type StaleAttester = {
@@ -183,6 +184,7 @@ export type AttesterData = {
   rollupActiveCount: number;
   rollupExitingCount: number;
   rollupZombieCount: number;
+  rollupQueuedCount: number;
   activationThreshold: bigint;
   cachedVsRollupBalanceDrift: bigint;
   staleAttesters: StaleAttester[];
@@ -243,6 +245,7 @@ export type EventData = {
   // Attester refresh
   attesterRefreshCount: number;
   attesterRefreshBalanceChangeCount: number;
+  failedQueuePurgedCount: number;
   // Withdrawal queue
   withdrawalRequestedCount: number;
   withdrawalRequestedVolume: bigint;

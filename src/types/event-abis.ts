@@ -336,6 +336,14 @@ export const StakingManagerEventAbi = [
       { name: "newBalance", type: "uint256", indexed: true },
     ],
   },
+  {
+    type: "event",
+    name: "FailedQueueEntryPurged",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "recoveredAmount", type: "uint256", indexed: true },
+    ],
+  },
 ] as const;
 
 export const WithdrawalQueueEventAbi = [
