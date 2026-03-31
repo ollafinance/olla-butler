@@ -169,8 +169,7 @@ export type AttesterStalenessReason =
   | "exit_exitable"
   | "zombie"
   | "fully_exited"
-  | "queued"
-  | "pending_activation";
+  | "queued";
 
 export type StaleAttester = {
   address: string;

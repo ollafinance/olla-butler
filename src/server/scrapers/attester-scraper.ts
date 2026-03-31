@@ -223,7 +223,9 @@ export function computeAttesterData(
     }
   }
 
-  // Detect queued → active transitions: attester was previously queued but is now VALIDATING on rollup
+  // Detect queued → active transitions: attester was previously queued but is now VALIDATING
+  // on the rollup. Keep it as "queued" (StakingManager still needs refresh to sync).
+  // This persists across scrape cycles until the refresh task actually fires.
   if (previousData) {
     const previouslyQueued = new Set(
       previousData.staleAttesters
@@ -234,19 +236,14 @@ export function computeAttesterData(
     for (const attester of attesters) {
       if (
         previouslyQueued.has(attester.address) &&
-        attester.status === AztecAttesterStatus.VALIDATING
+        attester.status === AztecAttesterStatus.VALIDATING &&
+        !staleAttesters.some((s) => s.address === attester.address)
       ) {
-        // Attester just got activated on the rollup — needs refresh to sync Olla's cache
-        const existing = staleAttesters.find((s) => s.address === attester.address);
-        if (existing) {
-          existing.reasons.push("pending_activation");
-        } else {
-          staleAttesters.push({
-            address: attester.address,
-            reasons: ["pending_activation"],
-            slashingLoss: 0n,
-          });
-        }
+        staleAttesters.push({
+          address: attester.address,
+          reasons: ["queued"],
+          slashingLoss: 0n,
+        });
       }
     }
   }

@@ -18,7 +18,6 @@ const REFRESH_REASONS = new Set([
   "exit_exitable",
   "zombie",
   "fully_exited",
-  "pending_activation",
   "queued",
 ]);
 

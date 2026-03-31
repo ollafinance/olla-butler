@@ -188,7 +188,7 @@ describe("computeAttesterData", () => {
     expect(stale.reasons).toHaveLength(2);
   });
 
-  it("detects pending_activation when previously queued attester becomes VALIDATING", () => {
+  it("keeps queued attester stale when it transitions to VALIDATING on rollup", () => {
     // Previous scrape: attester was queued (NONE on rollup, Olla has staked)
     const previousAttesters = [
       makeAttester({
@@ -201,24 +201,49 @@ describe("computeAttesterData", () => {
     const previousData = computeAttesterData(previousAttesters, THRESHOLD, THRESHOLD);
     expect(previousData.staleAttesters[0]!.reasons).toContain("queued");
 
-    // Current scrape: attester is now VALIDATING on rollup
+    // Current scrape: attester is now VALIDATING on rollup — still needs refresh to sync StakingManager
     const currentAttesters = [
       makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
     ];
     const result = computeAttesterData(currentAttesters, THRESHOLD, THRESHOLD, previousData);
 
     expect(result.staleAttesters).toHaveLength(1);
-    expect(result.staleAttesters[0]!.reasons).toContain("pending_activation");
+    expect(result.staleAttesters[0]!.reasons).toContain("queued");
   });
 
-  it("does not flag pending_activation for attesters that were not previously queued", () => {
+  it("queued persists across cycles until refresh fires", () => {
+    // Cycle 1: attester queued (NONE on rollup)
+    const cycle1Attesters = [
+      makeAttester({
+        address: "0x01",
+        status: AztecAttesterStatus.NONE,
+        effectiveBalance: 0n,
+        exit: { exists: false, amount: 0n, exitableAt: 0n, isExitable: false },
+      }),
+    ];
+    const cycle1 = computeAttesterData(cycle1Attesters, THRESHOLD, THRESHOLD);
+
+    // Cycle 2: attester now VALIDATING — still queued (needs refresh)
+    const cycle2Attesters = [
+      makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
+    ];
+    const cycle2 = computeAttesterData(cycle2Attesters, THRESHOLD, THRESHOLD, cycle1);
+    expect(cycle2.staleAttesters[0]!.reasons).toContain("queued");
+
+    // Cycle 3: still VALIDATING — queued persists from previous cycle
+    const cycle3 = computeAttesterData(cycle2Attesters, THRESHOLD, THRESHOLD, cycle2);
+    expect(cycle3.staleAttesters).toHaveLength(1);
+    expect(cycle3.staleAttesters[0]!.reasons).toContain("queued");
+  });
+
+  it("does not flag queued for attesters that were not previously queued", () => {
     // Previous scrape: attester was active (not queued)
     const previousAttesters = [
       makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
     ];
     const previousData = computeAttesterData(previousAttesters, THRESHOLD, THRESHOLD);
 
-    // Current scrape: still active
+    // Current scrape: still active — no stale reason
     const currentAttesters = [
       makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
     ];
@@ -227,7 +252,7 @@ describe("computeAttesterData", () => {
     expect(result.staleAttesters).toHaveLength(0);
   });
 
-  it("does not flag pending_activation when no previous data is available", () => {
+  it("does not flag queued transition when no previous data is available", () => {
     const attesters = [
       makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
     ];
