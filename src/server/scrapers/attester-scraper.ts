@@ -225,8 +225,9 @@ export function computeAttesterData(
 
   // Detect queued → active transitions: attester was previously queued but is now VALIDATING
   // on the rollup. Keep it as "queued" (StakingManager still needs refresh to sync).
-  // This persists across scrape cycles until the refresh task actually fires.
-  if (previousData) {
+  // Only persist if there's still a cached vs rollup balance drift — once they match,
+  // the StakingManager is in sync and no refresh is needed.
+  if (previousData && cachedStakedAmount !== undefined && cachedStakedAmount > rollupTotalEffectiveBalance) {
     const previouslyQueued = new Set(
       previousData.staleAttesters
         .filter((s) => s.reasons.includes("queued"))

@@ -188,7 +188,7 @@ describe("computeAttesterData", () => {
     expect(stale.reasons).toHaveLength(2);
   });
 
-  it("keeps queued attester stale when it transitions to VALIDATING on rollup", () => {
+  it("clears queued when attester transitions to VALIDATING and balances match", () => {
     // Previous scrape: attester was queued (NONE on rollup, Olla has staked)
     const previousAttesters = [
       makeAttester({
@@ -201,18 +201,43 @@ describe("computeAttesterData", () => {
     const previousData = computeAttesterData(previousAttesters, THRESHOLD, THRESHOLD);
     expect(previousData.staleAttesters[0]!.reasons).toContain("queued");
 
-    // Current scrape: attester is now VALIDATING on rollup — still needs refresh to sync StakingManager
+    // Current scrape: attester is now VALIDATING — cachedStakedAmount == rollupTotal, no drift
     const currentAttesters = [
       makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
     ];
     const result = computeAttesterData(currentAttesters, THRESHOLD, THRESHOLD, previousData);
 
+    // No drift → queued clears, no more no-op refreshes
+    expect(result.staleAttesters).toHaveLength(0);
+  });
+
+  it("keeps queued when attester transitions to VALIDATING but drift remains", () => {
+    // Previous scrape: attester was queued (NONE on rollup, Olla has staked more)
+    const previousAttesters = [
+      makeAttester({
+        address: "0x01",
+        status: AztecAttesterStatus.NONE,
+        effectiveBalance: 0n,
+        exit: { exists: false, amount: 0n, exitableAt: 0n, isExitable: false },
+      }),
+    ];
+    // cachedStakedAmount = 2*THRESHOLD (e.g. 2 attesters staked), rollupTotal = 0
+    const previousData = computeAttesterData(previousAttesters, THRESHOLD, THRESHOLD * 2n);
+    expect(previousData.staleAttesters[0]!.reasons).toContain("queued");
+
+    // Current scrape: attester VALIDATING with THRESHOLD balance, but cached is still 2*THRESHOLD
+    const currentAttesters = [
+      makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
+    ];
+    const result = computeAttesterData(currentAttesters, THRESHOLD, THRESHOLD * 2n, previousData);
+
+    // Drift remains (2*THRESHOLD > THRESHOLD) → queued persists until StakingManager syncs
     expect(result.staleAttesters).toHaveLength(1);
     expect(result.staleAttesters[0]!.reasons).toContain("queued");
   });
 
-  it("queued persists across cycles until refresh fires", () => {
-    // Cycle 1: attester queued (NONE on rollup)
+  it("queued clears once drift resolves across cycles", () => {
+    // Cycle 1: attester queued (NONE on rollup, cached > rollup)
     const cycle1Attesters = [
       makeAttester({
         address: "0x01",
@@ -223,17 +248,16 @@ describe("computeAttesterData", () => {
     ];
     const cycle1 = computeAttesterData(cycle1Attesters, THRESHOLD, THRESHOLD);
 
-    // Cycle 2: attester now VALIDATING — still queued (needs refresh)
+    // Cycle 2: attester now VALIDATING — no drift, queued clears
     const cycle2Attesters = [
       makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
     ];
     const cycle2 = computeAttesterData(cycle2Attesters, THRESHOLD, THRESHOLD, cycle1);
-    expect(cycle2.staleAttesters[0]!.reasons).toContain("queued");
+    expect(cycle2.staleAttesters).toHaveLength(0);
 
-    // Cycle 3: still VALIDATING — queued persists from previous cycle
+    // Cycle 3: still VALIDATING, no drift — stays clear
     const cycle3 = computeAttesterData(cycle2Attesters, THRESHOLD, THRESHOLD, cycle2);
-    expect(cycle3.staleAttesters).toHaveLength(1);
-    expect(cycle3.staleAttesters[0]!.reasons).toContain("queued");
+    expect(cycle3.staleAttesters).toHaveLength(0);
   });
 
   it("does not flag queued for attesters that were not previously queued", () => {
