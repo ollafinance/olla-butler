@@ -4,6 +4,9 @@ import { AztecAttesterStatus, type AttesterState } from "../../../types/index.js
 
 const THRESHOLD = 100n * 10n ** 18n; // 100 tokens
 
+/** StakingManager InternalAttesterStatus enum values */
+const IS = { Inactive: 0, Queued: 1, Active: 2, Exiting: 3 } as const;
+
 function makeAttester(overrides: Partial<AttesterState> & { address: string }): AttesterState {
   return {
     status: AztecAttesterStatus.VALIDATING,
@@ -13,6 +16,11 @@ function makeAttester(overrides: Partial<AttesterState> & { address: string }): 
   };
 }
 
+/** Build an internal status map from [address, status] pairs */
+function statuses(...entries: [string, number][]): Map<string, number> {
+  return new Map(entries);
+}
+
 describe("computeAttesterData", () => {
   it("computes correct aggregates for healthy attesters", () => {
     const attesters = [
@@ -20,8 +28,9 @@ describe("computeAttesterData", () => {
       makeAttester({ address: "0x02" }),
       makeAttester({ address: "0x03" }),
     ];
+    const sm = statuses(["0x01", IS.Active], ["0x02", IS.Active], ["0x03", IS.Active]);
 
-    const result = computeAttesterData(attesters, THRESHOLD, THRESHOLD * 3n);
+    const result = computeAttesterData(attesters, THRESHOLD, THRESHOLD * 3n, sm);
 
     expect(result.rollupActiveCount).toBe(3);
     expect(result.rollupExitingCount).toBe(0);
@@ -97,7 +106,7 @@ describe("computeAttesterData", () => {
     expect(result.staleAttesters[0]!.reasons).toContain("exit_exitable");
   });
 
-  it("detects fully exited attester", () => {
+  it("detects fully exited attester (no internal statuses)", () => {
     const attesters = [
       makeAttester({
         address: "0x01",
@@ -132,7 +141,7 @@ describe("computeAttesterData", () => {
     expect(result.cachedVsRollupBalanceDrift).toBe(0n);
   });
 
-  it("detects queued attester (NONE on rollup, cached stake exceeds rollup balance)", () => {
+  it("detects queued attester via internal status (NONE on rollup, Queued in SM)", () => {
     const attesters = [
       makeAttester({
         address: "0x01",
@@ -141,15 +150,31 @@ describe("computeAttesterData", () => {
         exit: { exists: false, amount: 0n, exitableAt: 0n, isExitable: false },
       }),
     ];
-    // Olla has staked more than the rollup shows — attester is queued
-    const cachedAmount = THRESHOLD;
+    const sm = statuses(["0x01", IS.Queued]);
 
-    const result = computeAttesterData(attesters, THRESHOLD, cachedAmount);
+    const result = computeAttesterData(attesters, THRESHOLD, THRESHOLD, sm);
 
     expect(result.rollupQueuedCount).toBe(1);
     expect(result.staleAttesters).toHaveLength(1);
     expect(result.staleAttesters[0]!.reasons).toContain("queued");
     expect(result.staleAttesters[0]!.reasons).not.toContain("fully_exited");
+  });
+
+  it("does not detect queued without internal statuses (fully_exited stays)", () => {
+    const attesters = [
+      makeAttester({
+        address: "0x01",
+        status: AztecAttesterStatus.NONE,
+        effectiveBalance: 0n,
+        exit: { exists: false, amount: 0n, exitableAt: 0n, isExitable: false },
+      }),
+    ];
+
+    const result = computeAttesterData(attesters, THRESHOLD, THRESHOLD);
+
+    expect(result.rollupQueuedCount).toBe(0);
+    expect(result.staleAttesters).toHaveLength(1);
+    expect(result.staleAttesters[0]!.reasons).toContain("fully_exited");
   });
 
   it("counts status types correctly with mixed attesters", () => {
@@ -169,7 +194,6 @@ describe("computeAttesterData", () => {
   });
 
   it("attester can have multiple staleness reasons", () => {
-    // Validating attester with an undetected exit that is already exitable
     const attesters = [
       makeAttester({
         address: "0x01",
@@ -188,95 +212,19 @@ describe("computeAttesterData", () => {
     expect(stale.reasons).toHaveLength(2);
   });
 
-  it("clears queued when attester transitions to VALIDATING and balances match", () => {
-    // Previous scrape: attester was queued (NONE on rollup, Olla has staked)
-    const previousAttesters = [
-      makeAttester({
-        address: "0x01",
-        status: AztecAttesterStatus.NONE,
-        effectiveBalance: 0n,
-        exit: { exists: false, amount: 0n, exitableAt: 0n, isExitable: false },
-      }),
-    ];
-    const previousData = computeAttesterData(previousAttesters, THRESHOLD, THRESHOLD);
-    expect(previousData.staleAttesters[0]!.reasons).toContain("queued");
-
-    // Current scrape: attester is now VALIDATING — cachedStakedAmount == rollupTotal, no drift
-    const currentAttesters = [
+  it("does not flag activation_pending when SM status is Active", () => {
+    const attesters = [
       makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
+      makeAttester({ address: "0x02", status: AztecAttesterStatus.VALIDATING }),
     ];
-    const result = computeAttesterData(currentAttesters, THRESHOLD, THRESHOLD, previousData);
+    const sm = statuses(["0x01", IS.Active], ["0x02", IS.Active]);
 
-    // No drift → queued clears, no more no-op refreshes
-    expect(result.staleAttesters).toHaveLength(0);
-  });
-
-  it("keeps queued when attester transitions to VALIDATING but drift remains", () => {
-    // Previous scrape: attester was queued (NONE on rollup, Olla has staked more)
-    const previousAttesters = [
-      makeAttester({
-        address: "0x01",
-        status: AztecAttesterStatus.NONE,
-        effectiveBalance: 0n,
-        exit: { exists: false, amount: 0n, exitableAt: 0n, isExitable: false },
-      }),
-    ];
-    // cachedStakedAmount = 2*THRESHOLD (e.g. 2 attesters staked), rollupTotal = 0
-    const previousData = computeAttesterData(previousAttesters, THRESHOLD, THRESHOLD * 2n);
-    expect(previousData.staleAttesters[0]!.reasons).toContain("queued");
-
-    // Current scrape: attester VALIDATING with THRESHOLD balance, but cached is still 2*THRESHOLD
-    const currentAttesters = [
-      makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
-    ];
-    const result = computeAttesterData(currentAttesters, THRESHOLD, THRESHOLD * 2n, previousData);
-
-    // Drift remains (2*THRESHOLD > THRESHOLD) → queued persists until StakingManager syncs
-    expect(result.staleAttesters).toHaveLength(1);
-    expect(result.staleAttesters[0]!.reasons).toContain("queued");
-  });
-
-  it("queued clears once drift resolves across cycles", () => {
-    // Cycle 1: attester queued (NONE on rollup, cached > rollup)
-    const cycle1Attesters = [
-      makeAttester({
-        address: "0x01",
-        status: AztecAttesterStatus.NONE,
-        effectiveBalance: 0n,
-        exit: { exists: false, amount: 0n, exitableAt: 0n, isExitable: false },
-      }),
-    ];
-    const cycle1 = computeAttesterData(cycle1Attesters, THRESHOLD, THRESHOLD);
-
-    // Cycle 2: attester now VALIDATING — no drift, queued clears
-    const cycle2Attesters = [
-      makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
-    ];
-    const cycle2 = computeAttesterData(cycle2Attesters, THRESHOLD, THRESHOLD, cycle1);
-    expect(cycle2.staleAttesters).toHaveLength(0);
-
-    // Cycle 3: still VALIDATING, no drift — stays clear
-    const cycle3 = computeAttesterData(cycle2Attesters, THRESHOLD, THRESHOLD, cycle2);
-    expect(cycle3.staleAttesters).toHaveLength(0);
-  });
-
-  it("does not flag queued for attesters that were not previously queued", () => {
-    // Previous scrape: attester was active (not queued)
-    const previousAttesters = [
-      makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
-    ];
-    const previousData = computeAttesterData(previousAttesters, THRESHOLD, THRESHOLD);
-
-    // Current scrape: still active — no stale reason
-    const currentAttesters = [
-      makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
-    ];
-    const result = computeAttesterData(currentAttesters, THRESHOLD, THRESHOLD, previousData);
+    const result = computeAttesterData(attesters, THRESHOLD, THRESHOLD * 2n, sm);
 
     expect(result.staleAttesters).toHaveLength(0);
   });
 
-  it("does not flag queued transition when no previous data is available", () => {
+  it("does not flag activation_pending when no internal statuses provided", () => {
     const attesters = [
       makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
     ];
@@ -286,7 +234,6 @@ describe("computeAttesterData", () => {
   });
 
   it("slashing is only detected without an exit", () => {
-    // Partial slashing: balance below threshold, no exit
     const attesters = [
       makeAttester({
         address: "0x01",
@@ -303,5 +250,77 @@ describe("computeAttesterData", () => {
     expect(stale.reasons).toContain("slashing");
     expect(stale.reasons).toHaveLength(1);
     expect(stale.slashingLoss).toBe(50n * 10n ** 18n);
+  });
+
+  // ── activation_pending tests ──
+
+  it("detects activation_pending only for Queued attesters that are VALIDATING", () => {
+    const attesters = [
+      makeAttester({ address: "0x01" }), // VALIDATING
+      makeAttester({ address: "0x02" }), // VALIDATING
+      makeAttester({ address: "0x03" }), // VALIDATING
+    ];
+    const sm = statuses(["0x01", IS.Active], ["0x02", IS.Queued], ["0x03", IS.Queued]);
+
+    const result = computeAttesterData(attesters, THRESHOLD, THRESHOLD * 3n, sm);
+
+    expect(result.staleAttesters).toHaveLength(2);
+    const addresses = result.staleAttesters.map((s) => s.address);
+    expect(addresses).toContain("0x02");
+    expect(addresses).toContain("0x03");
+    for (const stale of result.staleAttesters) {
+      expect(stale.reasons).toEqual(["activation_pending"]);
+      expect(stale.slashingLoss).toBe(0n);
+    }
+  });
+
+  it("activation_pending does not apply to non-VALIDATING attesters", () => {
+    const attesters = [
+      makeAttester({ address: "0x01", status: AztecAttesterStatus.VALIDATING }),
+      makeAttester({
+        address: "0x02",
+        status: AztecAttesterStatus.EXITING,
+        exit: { exists: true, amount: THRESHOLD, exitableAt: 999n, isExitable: false },
+      }),
+    ];
+    const sm = statuses(["0x01", IS.Queued], ["0x02", IS.Queued]);
+
+    const result = computeAttesterData(attesters, THRESHOLD, THRESHOLD * 2n, sm);
+
+    const stale01 = result.staleAttesters.find((s) => s.address === "0x01")!;
+    expect(stale01.reasons).toContain("activation_pending");
+
+    // EXITING attester should NOT get activation_pending even if Queued in SM
+    const stale02 = result.staleAttesters.find((s) => s.address === "0x02");
+    expect(stale02).toBeUndefined();
+  });
+
+  it("reproduces the sepolia bug: equal balances, only Queued attesters are tagged", () => {
+    // 5 attesters VALIDATING on rollup, cachedStakedAmount == rollupTotalEffectiveBalance,
+    // but 2 are still Queued in StakingManager.
+    const attesters = [
+      makeAttester({ address: "0x01" }),
+      makeAttester({ address: "0x02" }),
+      makeAttester({ address: "0x03" }),
+      makeAttester({ address: "0x04" }),
+      makeAttester({ address: "0x05" }),
+    ];
+    const totalBalance = THRESHOLD * 5n;
+    const sm = statuses(
+      ["0x01", IS.Active], ["0x02", IS.Active], ["0x03", IS.Active],
+      ["0x04", IS.Queued], ["0x05", IS.Queued],
+    );
+
+    const result = computeAttesterData(attesters, THRESHOLD, totalBalance, sm);
+
+    expect(result.cachedVsRollupBalanceDrift).toBe(0n);
+    // Only the 2 Queued attesters should be tagged — not all 5
+    expect(result.staleAttesters).toHaveLength(2);
+    const addresses = result.staleAttesters.map((s) => s.address);
+    expect(addresses).toContain("0x04");
+    expect(addresses).toContain("0x05");
+    for (const stale of result.staleAttesters) {
+      expect(stale.reasons).toEqual(["activation_pending"]);
+    }
   });
 });

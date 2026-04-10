@@ -1,6 +1,6 @@
 import { AbstractScraper } from "./base-scraper.js";
 import type { OllaProtocolClient } from "../../core/components/OllaProtocolClient.js";
-import { updateAttesterData, getAttesterData } from "../state/index.js";
+import { updateAttesterData } from "../state/index.js";
 import { getStakingData } from "../state/index.js";
 import { getAttesters } from "../state/attester-registry.js";
 import { pushEvent } from "../state/event-log.js";
@@ -72,14 +72,19 @@ export class AttesterScraper extends AbstractScraper {
         return;
       }
 
-      const [attesters, activationThreshold] = await Promise.all([
+      const [attesters, activationThreshold, internalStatuses] = await Promise.all([
         this.protocolClient.scrapeAttesterStates(attesterAddresses),
         this.protocolClient.scrapeActivationThreshold(),
+        this.protocolClient.scrapeAttesterInternalStatuses(attesterAddresses),
       ]);
 
       const stakingData = getStakingData(this.network);
-      const previousAttesterData = getAttesterData(this.network);
-      const data = computeAttesterData(attesters, activationThreshold, stakingData?.stakingState.stakedAmount, previousAttesterData ?? undefined);
+      const data = computeAttesterData(
+        attesters,
+        activationThreshold,
+        stakingData?.stakingState.stakedAmount,
+        internalStatuses,
+      );
       updateAttesterData(this.network, data);
 
       const staleCount = data.staleAttesters.length;
@@ -120,13 +125,26 @@ export class AttesterScraper extends AbstractScraper {
 }
 
 /**
- * Computes aggregate attester data and staleness detection from rollup state.
+ * Computes aggregate attester data and staleness detection.
+ *
+ * Compares rollup state (source of truth for on-chain status) against
+ * StakingManager internal state (per-attester status from storage) to detect
+ * attesters that need a refreshAttesterState() call.
+ *
+ * Staleness reasons:
+ *  - zombie:              Rollup status is ZOMBIE (slashed and ejected)
+ *  - slashing:            VALIDATING but effectiveBalance < activationThreshold
+ *  - exit_undetected:     VALIDATING but rollup has an exit — Olla may not know
+ *  - exit_exitable:       Exit delay has passed, ready to finalize
+ *  - fully_exited:        NONE on rollup, no balance, no exit — attester is gone
+ *  - queued:              NONE on rollup, but StakingManager has it staked — waiting for entry queue flush
+ *  - activation_pending:  VALIDATING on rollup, but StakingManager still considers it Queued — needs refresh
  */
 export function computeAttesterData(
   attesters: AttesterState[],
   activationThreshold: bigint,
   cachedStakedAmount?: bigint,
-  previousData?: AttesterData,
+  internalStatuses?: Map<string, number>,
 ): AttesterData {
   let rollupTotalEffectiveBalance = 0n;
   let rollupActiveCount = 0;
@@ -155,13 +173,13 @@ export function computeAttesterData(
       exitableAttesterCount++;
     }
 
-    // Detect staleness reasons
     const reasons: AttesterStalenessReason[] = [];
     let slashingLoss = 0n;
 
+    // ── Rollup-derived staleness ──
+
     if (attester.status === AztecAttesterStatus.ZOMBIE) {
       reasons.push("zombie");
-      // Zombie with remaining balance: loss = threshold - effectiveBalance
       slashingLoss = attester.effectiveBalance < activationThreshold
         ? activationThreshold - attester.effectiveBalance
         : 0n;
@@ -172,7 +190,6 @@ export function computeAttesterData(
       attester.effectiveBalance < activationThreshold &&
       !attester.exit.exists
     ) {
-      // Partial slashing: balance reduced below threshold, not exiting
       reasons.push("slashing");
       slashingLoss = activationThreshold - attester.effectiveBalance;
     }
@@ -181,7 +198,6 @@ export function computeAttesterData(
       attester.status === AztecAttesterStatus.VALIDATING &&
       attester.exit.exists
     ) {
-      // Rollup has exit, but Olla may not know about it
       reasons.push("exit_undetected");
     }
 
@@ -194,8 +210,36 @@ export function computeAttesterData(
       attester.effectiveBalance === 0n &&
       !attester.exit.exists
     ) {
-      // Attester is NONE on rollup but still in our registry — tagged after loop
       reasons.push("fully_exited");
+    }
+
+    // ── StakingManager-derived staleness ──
+
+    if (internalStatuses) {
+      const internalStatus = internalStatuses.get(attester.address);
+
+      // Queued in StakingManager but VALIDATING on rollup → needs refresh to promote
+      if (
+        internalStatus === InternalAttesterStatus.Queued &&
+        attester.status === AztecAttesterStatus.VALIDATING
+      ) {
+        reasons.push("activation_pending");
+      }
+
+      // Queued in StakingManager and NONE on rollup → waiting for entry queue flush
+      if (
+        internalStatus === InternalAttesterStatus.Queued &&
+        attester.status === AztecAttesterStatus.NONE
+      ) {
+        // Replace fully_exited with queued — this attester isn't gone, it's waiting
+        const idx = reasons.indexOf("fully_exited");
+        if (idx !== -1) {
+          reasons[idx] = "queued";
+        } else {
+          reasons.push("queued");
+        }
+        rollupQueuedCount++;
+      }
     }
 
     if (reasons.length > 0) {
@@ -211,44 +255,6 @@ export function computeAttesterData(
     ? absDiff(cachedStakedAmount, rollupTotalEffectiveBalance)
     : 0n;
 
-  // Reclassify fully_exited → queued when Olla has more staked than rollup shows
-  // (attester is in the StakingManager's Queued state, waiting for rollup activation)
-  if (cachedStakedAmount !== undefined && cachedStakedAmount > rollupTotalEffectiveBalance) {
-    for (const stale of staleAttesters) {
-      const idx = stale.reasons.indexOf("fully_exited");
-      if (idx !== -1) {
-        stale.reasons[idx] = "queued";
-        rollupQueuedCount++;
-      }
-    }
-  }
-
-  // Detect queued → active transitions: attester was previously queued but is now VALIDATING
-  // on the rollup. Keep it as "queued" (StakingManager still needs refresh to sync).
-  // Only persist if there's still a cached vs rollup balance drift — once they match,
-  // the StakingManager is in sync and no refresh is needed.
-  if (previousData && cachedStakedAmount !== undefined && cachedStakedAmount > rollupTotalEffectiveBalance) {
-    const previouslyQueued = new Set(
-      previousData.staleAttesters
-        .filter((s) => s.reasons.includes("queued"))
-        .map((s) => s.address),
-    );
-
-    for (const attester of attesters) {
-      if (
-        previouslyQueued.has(attester.address) &&
-        attester.status === AztecAttesterStatus.VALIDATING &&
-        !staleAttesters.some((s) => s.address === attester.address)
-      ) {
-        staleAttesters.push({
-          address: attester.address,
-          reasons: ["queued"],
-          slashingLoss: 0n,
-        });
-      }
-    }
-  }
-
   return {
     attesters,
     rollupTotalEffectiveBalance,
@@ -263,6 +269,14 @@ export function computeAttesterData(
     lastUpdated: new Date(),
   };
 }
+
+/** StakingManager InternalAttesterStatus enum values (from contract storage) */
+const InternalAttesterStatus = {
+  Inactive: 0,
+  Queued: 1,
+  Active: 2,
+  Exiting: 3,
+} as const;
 
 function absDiff(a: bigint, b: bigint): bigint {
   return a > b ? a - b : b - a;

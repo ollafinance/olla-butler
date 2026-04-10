@@ -19,6 +19,7 @@ const REFRESH_REASONS = new Set([
   "zombie",
   "fully_exited",
   "queued",
+  "activation_pending",
 ]);
 
 /** Cooldown per attester to avoid spamming refresh (5 minutes) */

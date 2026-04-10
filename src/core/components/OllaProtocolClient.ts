@@ -2,6 +2,7 @@ import {
   createPublicClient,
   getAddress,
   getContract,
+  keccak256,
   type Address,
   type GetContractReturnType,
   type PublicClient,
@@ -376,6 +377,42 @@ export class OllaProtocolClient {
 
   async scrapeActivationThreshold(): Promise<bigint> {
     return this.canonicalRollupContract.read.getActivationThreshold();
+  }
+
+  /**
+   * Reads the StakingManager's internal attester status via raw storage.
+   *
+   * The StakingManager has no public getter for per-attester status, but the
+   * storage layout is stable (UUPS upgradeable with gaps). The _attesterMap
+   * lives at slot 7, and AttesterInfo.status is at offset +3 from the mapping
+   * base slot for each key.
+   *
+   * InternalAttesterStatus: 0=Inactive, 1=Queued, 2=Active, 3=Exiting
+   */
+  async scrapeAttesterInternalStatuses(attesterAddresses: string[]): Promise<Map<string, number>> {
+    const stakingManagerAddr = getAddress(this.addresses!.stakingManager) as Address;
+    const ATTESTER_MAP_SLOT = 7n;
+    const STATUS_OFFSET = 3n;
+
+    const results = await Promise.all(
+      attesterAddresses.map(async (addr) => {
+        const paddedAddr = addr.toLowerCase().replace("0x", "").padStart(64, "0");
+        const paddedSlot = ATTESTER_MAP_SLOT.toString(16).padStart(64, "0");
+        const baseSlot = BigInt(
+          keccak256(`0x${paddedAddr}${paddedSlot}`),
+        );
+        const statusSlot = `0x${(baseSlot + STATUS_OFFSET).toString(16)}` as `0x${string}`;
+
+        const raw = await this.client.getStorageAt({
+          address: stakingManagerAddr,
+          slot: statusSlot,
+        });
+        const status = Number(BigInt(raw ?? "0x0"));
+        return [addr.toLowerCase(), status] as const;
+      }),
+    );
+
+    return new Map(results);
   }
 
   /**
