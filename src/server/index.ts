@@ -24,6 +24,7 @@ import {
   WithdrawalQueueScraper,
   EventWatcher,
   AttesterScraper,
+  RollupEventListener,
 } from "./scrapers/index.js";
 import { initNetworkState, updateContractAddresses } from "./state/index.js";
 import { initAttesterRegistry } from "./state/attester-registry.js";
@@ -49,6 +50,7 @@ async function initializeNetwork(
   network: string,
   config: ButlerConfig,
   scraperManager: ScraperManager,
+  rollupListeners: RollupEventListener[],
 ): Promise<void> {
   console.log(`\n--- Initializing network: ${network} ---`);
 
@@ -97,6 +99,21 @@ async function initializeNetwork(
 
     const attesterScraper = new AttesterScraper(network, protocolClient);
     scraperManager.register(attesterScraper, 60_000); // 60s
+
+    if (config.ETHEREUM_NODE_WS_URL) {
+      console.log(`[${network}] Starting WS rollup event listener (${config.ETHEREUM_NODE_WS_URL})...`);
+      rollupListeners.push(
+        new RollupEventListener(
+          network,
+          config.ETHEREUM_NODE_WS_URL,
+          config.ETHEREUM_CHAIN_ID,
+          protocolClient,
+          attesterScraper,
+        ),
+      );
+    } else {
+      console.log(`[${network}] WS rollup event listener disabled (ETHEREUM_NODE_WS_URL not set)`);
+    }
   } else {
     console.log(`[${network}] Attester monitoring disabled (ATTESTER_SCAN_START_BLOCK not set)`);
   }
@@ -214,11 +231,12 @@ export const startServer = async (specificNetwork?: string) => {
   initScraperHealthMetrics();
 
   const scraperManager = new ScraperManager();
+  const rollupListeners: RollupEventListener[] = [];
 
   initLog("Initializing all networks...");
   for (const [network, config] of networkConfigs.entries()) {
     try {
-      await initializeNetwork(network, config, scraperManager);
+      await initializeNetwork(network, config, scraperManager, rollupListeners);
     } catch (error) {
       console.error(`[${network}] Failed to initialize network:`, error);
       console.warn(
@@ -231,6 +249,20 @@ export const startServer = async (specificNetwork?: string) => {
   await scraperManager.init();
   await scraperManager.start();
 
+  if (rollupListeners.length > 0) {
+    initLog(`Starting ${rollupListeners.length} rollup event listener(s)...`);
+    for (const listener of rollupListeners) {
+      try {
+        listener.start();
+      } catch (error) {
+        console.error(
+          `[${listener.network}] Failed to start rollup event listener:`,
+          error,
+        );
+      }
+    }
+  }
+
   // Graceful shutdown
   let isShuttingDown = false;
   const shutdown = async () => {
@@ -242,6 +274,17 @@ export const startServer = async (specificNetwork?: string) => {
 
     console.log("\n\n=== Shutting down gracefully ===");
     try {
+      for (const listener of rollupListeners) {
+        try {
+          listener.shutdown();
+        } catch (err) {
+          console.error(
+            `[${listener.network}] Error shutting down rollup event listener:`,
+            err,
+          );
+        }
+      }
+
       console.log("Shutting down scrapers...");
       await scraperManager.shutdown();
       console.log("Scrapers shut down");

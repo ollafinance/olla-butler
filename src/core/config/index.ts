@@ -67,6 +67,11 @@ function buildConfig(network: string) {
       z.string(),
       process.env.ETHEREUM_NODE_URL || "http://localhost:8545",
     ),
+    ETHEREUM_NODE_WS_URL: parseConfigField(
+      "ETHEREUM_NODE_WS_URL",
+      z.string().startsWith("ws").optional(),
+      process.env.ETHEREUM_NODE_WS_URL || undefined,
+    ),
     OLLA_CORE_ADDRESS: parseConfigField(
       "OLLA_CORE_ADDRESS",
       z.string().startsWith("0x").length(42),

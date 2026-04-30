@@ -8,3 +8,4 @@ export { SafetyModuleScraper } from "./safety-module-scraper.js";
 export { WithdrawalQueueScraper } from "./withdrawal-queue-scraper.js";
 export { EventWatcher } from "./event-watcher.js";
 export { AttesterScraper } from "./attester-scraper.js";
+export { RollupEventListener } from "./rollup-event-listener.js";

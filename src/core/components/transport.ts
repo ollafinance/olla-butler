@@ -12,7 +12,7 @@
  * stable/fastest one to primary position.
  */
 
-import { http, fallback, type Transport, type Chain } from "viem";
+import { http, fallback, webSocket, type Transport, type Chain } from "viem";
 import { foundry, mainnet, sepolia } from "viem/chains";
 
 /** Chains supported by the butler. Shared by protocol client and tx executor. */
@@ -37,4 +37,11 @@ export function createTransport(rpcUrls: string): Transport {
     urls.map((url) => http(url)),
     { rank: true },
   );
+}
+
+export function createWsTransport(wsUrl: string): Transport {
+  return webSocket(wsUrl, {
+    keepAlive: true,
+    reconnect: true,
+  });
 }

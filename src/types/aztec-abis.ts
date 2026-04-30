@@ -106,3 +106,123 @@ export const AztecRollupAbi = [
     stateMutability: "view",
   },
 ] as const;
+
+/**
+ * Events emitted by the Aztec rollup contract for the validator/attester
+ * lifecycle (sourced from IStakingCore.sol in aztec-packages/l1-contracts).
+ * The Rollup contract inherits IStaking and emits these via StakingLib.
+ *
+ * Used by RollupEventListener to subscribe via WebSocket and trigger an
+ * AttesterScraper refresh on any lifecycle change without polling.
+ */
+export const AztecRollupEventAbi = [
+  {
+    type: "event",
+    name: "ValidatorQueued",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "withdrawer", type: "address", indexed: true },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "Deposit",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "withdrawer", type: "address", indexed: true },
+      {
+        name: "publicKeyInG1",
+        type: "tuple",
+        components: [
+          { name: "x", type: "uint256" },
+          { name: "y", type: "uint256" },
+        ],
+      },
+      {
+        name: "publicKeyInG2",
+        type: "tuple",
+        components: [
+          { name: "x0", type: "uint256" },
+          { name: "x1", type: "uint256" },
+          { name: "y0", type: "uint256" },
+          { name: "y1", type: "uint256" },
+        ],
+      },
+      {
+        name: "proofOfPossession",
+        type: "tuple",
+        components: [
+          { name: "x", type: "uint256" },
+          { name: "y", type: "uint256" },
+        ],
+      },
+      { name: "amount", type: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "FailedDeposit",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "withdrawer", type: "address", indexed: true },
+      {
+        name: "publicKeyInG1",
+        type: "tuple",
+        components: [
+          { name: "x", type: "uint256" },
+          { name: "y", type: "uint256" },
+        ],
+      },
+      {
+        name: "publicKeyInG2",
+        type: "tuple",
+        components: [
+          { name: "x0", type: "uint256" },
+          { name: "x1", type: "uint256" },
+          { name: "y0", type: "uint256" },
+          { name: "y1", type: "uint256" },
+        ],
+      },
+      {
+        name: "proofOfPossession",
+        type: "tuple",
+        components: [
+          { name: "x", type: "uint256" },
+          { name: "y", type: "uint256" },
+        ],
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WithdrawInitiated",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "recipient", type: "address", indexed: true },
+      { name: "amount", type: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "WithdrawFinalized",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "recipient", type: "address", indexed: true },
+      { name: "amount", type: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "Slashed",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "amount", type: "uint256" },
+    ],
+    anonymous: false,
+  },
+] as const;
