@@ -45,16 +45,17 @@ export const initSafetyMetrics = () => {
     }
   });
 
-  // Withdrawal queue ratio (pending withdrawals / TVL)
+  // Withdrawal queue ratio (pending withdrawals / vault TVL) — mirrors the
+  // SafetyModule's maxQueueRatioBps circuit breaker, which compares pending
+  // against the vault's totalAssets, not core's.
   const queueRatioGauge = createObservableGauge("withdrawal_queue_ratio_pct", {
-    description: "Withdrawal queue ratio percentage (pending / TVL * 100)",
+    description: "Withdrawal queue ratio percentage (vault.pendingWithdrawalAssets / vault.totalAssets * 100)",
   });
   queueRatioGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.vaultData && state.coreData && state.coreData.totalAssets > 0n) {
-        const ratio =
-          (Number(state.vaultData.pendingWithdrawalAssets) / Number(state.coreData.totalAssets)) * 100;
-        result.observe(ratio, { network });
+      if (state.vaultData && state.vaultData.totalAssets > 0n) {
+        const bps = (state.vaultData.pendingWithdrawalAssets * 10000n) / state.vaultData.totalAssets;
+        result.observe(Number(bps) / 100, { network });
       }
     }
   });
