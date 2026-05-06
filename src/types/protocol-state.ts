@@ -108,6 +108,7 @@ export type SafetyModuleData = {
   isPaused: boolean;
   depositCap: bigint;
   minRateDropBps: bigint;
+  rateHighWaterMark: bigint;
   maxQueueRatioBps: bigint;
   maxAccountingDelay: bigint;
   withdrawalMinimum: bigint;
@@ -235,6 +236,11 @@ export type EventData = {
   attesterRefreshCount: number;
   attesterRefreshBalanceChangeCount: number;
   failedQueuePurgedCount: number;
+  fullySlashedAttesterPurgedCount: number;
+  aggregateStateUnderflowClampCount: number;
+  rewardsHarvestFailedCount: number;
+  rewardRollupTrackedCount: number;
+  rewardRollupRemovedCount: number;
   // Withdrawal queue
   withdrawalRequestedCount: number;
   withdrawalRequestedVolume: bigint;

@@ -56,6 +56,14 @@ export const createVaultEventListener = (
         );
       },
     },
+    OperatorSet: {
+      onEvent: (log: DecodedLog, ctx) => {
+        console.log(
+          `[${ctx.name}/${ctx.network}] block=${log.blockNumber} OperatorSet ` +
+            `controller=${log.args.controller} operator=${log.args.operator} approved=${log.args.approved}`,
+        );
+      },
+    },
   };
 
   return new ContractEventListener({

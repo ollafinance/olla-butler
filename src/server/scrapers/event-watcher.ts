@@ -62,6 +62,11 @@ function createEmptyEventData(): EventData {
     attesterRefreshCount: 0,
     attesterRefreshBalanceChangeCount: 0,
     failedQueuePurgedCount: 0,
+    fullySlashedAttesterPurgedCount: 0,
+    aggregateStateUnderflowClampCount: 0,
+    rewardsHarvestFailedCount: 0,
+    rewardRollupTrackedCount: 0,
+    rewardRollupRemovedCount: 0,
     withdrawalRequestedCount: 0,
     withdrawalRequestedVolume: 0n,
     withdrawalFinalizedCount: 0,
@@ -525,6 +530,11 @@ export class EventWatcher extends AbstractScraper {
             govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "minRateDropBps", null, String(log.args.minRateDropBps), "config_change"));
             console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} → ${log.args.minRateDropBps} at block ${log.blockNumber}`);
             break;
+          case "RateHighWaterMarkUpdated":
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "rateHighWaterMark", null, formatEther(log.args.rateHighWaterMark), "config_change"));
+            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} → ${formatEther(log.args.rateHighWaterMark)} at block ${log.blockNumber}`);
+            break;
           case "QueueRatioLimitUpdated":
             this.eventData.configChangeCount++;
             govEvents.push(this.toGovernanceEvent(log, "SafetyModule", blockTimestamps, "maxQueueRatioBps", null, String(log.args.maxQueueRatioBps), "config_change"));
@@ -587,6 +597,58 @@ export class EventWatcher extends AbstractScraper {
             removeAttester(this.network, args.attester);
             console.warn(
               `[${this.name}/${this.network}] FailedQueueEntryPurged: ${args.attester} recovered ${formatEther(args.recoveredAmount)} at block ${log.blockNumber}`,
+            );
+            break;
+          }
+          case "FullySlashedAttesterPurged": {
+            this.eventData.fullySlashedAttesterPurgedCount++;
+            const args = log.args as { attester: string; cachedStake: bigint; reason: `0x${string}` };
+            removeAttester(this.network, args.attester);
+            console.warn(
+              `[${this.name}/${this.network}] FullySlashedAttesterPurged: ${args.attester} cachedStake=${formatEther(args.cachedStake)} reason=${args.reason} at block ${log.blockNumber}`,
+            );
+            break;
+          }
+          case "AggregateStateUnderflowClamped": {
+            this.eventData.aggregateStateUnderflowClampCount++;
+            const args = log.args as { attester: string; field: `0x${string}`; currentAmount: bigint; requestedDecrease: bigint };
+            console.warn(
+              `[${this.name}/${this.network}] AggregateStateUnderflowClamped: attester=${args.attester} field=${args.field} currentAmount=${formatEther(args.currentAmount)} requestedDecrease=${formatEther(args.requestedDecrease)} at block ${log.blockNumber}`,
+            );
+            break;
+          }
+          case "RewardsHarvestFailed": {
+            this.eventData.rewardsHarvestFailedCount++;
+            const args = log.args as { reason: `0x${string}` };
+            console.warn(
+              `[${this.name}/${this.network}] RewardsHarvestFailed: reason=${args.reason} at block ${log.blockNumber}`,
+            );
+            break;
+          }
+          case "RewardRollupTracked": {
+            this.eventData.rewardRollupTrackedCount++;
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "StakingManager", blockTimestamps, "rewardRollupTracked", null, log.args.rollup, "config_change"));
+            console.log(
+              `[${this.name}/${this.network}] RewardRollupTracked: rollup=${log.args.rollup} at block ${log.blockNumber}`,
+            );
+            break;
+          }
+          case "RewardRollupRemoved": {
+            this.eventData.rewardRollupRemovedCount++;
+            this.eventData.configChangeCount++;
+            govEvents.push(this.toGovernanceEvent(log, "StakingManager", blockTimestamps, "rewardRollupRemoved", log.args.rollup, "", "config_change"));
+            console.log(
+              `[${this.name}/${this.network}] RewardRollupRemoved: rollup=${log.args.rollup} at block ${log.blockNumber}`,
+            );
+            break;
+          }
+          case "RewardsHarvestedFromRollup": {
+            // Per-rollup harvest detail — the aggregate `RewardsHarvested`
+            // event already credits volume, so don't double-count here.
+            const args = log.args as { rollup: string; amount: bigint };
+            console.log(
+              `[${this.name}/${this.network}] RewardsHarvestedFromRollup: rollup=${args.rollup} amount=${formatEther(args.amount)} at block ${log.blockNumber}`,
             );
             break;
           }

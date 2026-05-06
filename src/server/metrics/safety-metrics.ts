@@ -71,6 +71,20 @@ export const initSafetyMetrics = () => {
     }
   });
 
+  // Rate high-water mark — the reference rate against which the rate-drop
+  // breaker is evaluated. Updated on each new high (and reset on cumulative
+  // drop reset). Zero before the first AccountingUpdated has seeded it.
+  const rateHighWaterMarkGauge = createObservableGauge("rate_high_water_mark", {
+    description: "Current rate high-water mark used by the rate-drop circuit breaker (18-decimal fixed point divided)",
+  });
+  rateHighWaterMarkGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, state] of getAllNetworkStates().entries()) {
+      if (state.safetyModuleData) {
+        result.observe(Number(state.safetyModuleData.rateHighWaterMark) / WEI_DIVISOR, { network });
+      }
+    }
+  });
+
   // Accounting staleness
   const accountingStalenessGauge = createObservableGauge("accounting_staleness_seconds", {
     description: "Seconds since last accounting update on-chain",

@@ -132,6 +132,31 @@ export const initEventMetrics = () => {
     "Total FailedQueueEntryPurged events",
     (d) => d.failedQueuePurgedCount,
   );
+  eventGauge(
+    "fully_slashed_purged_event_count",
+    "Total FullySlashedAttesterPurged events (slashed attester evicted from accounting)",
+    (d) => d.fullySlashedAttesterPurgedCount,
+  );
+  eventGauge(
+    "aggregate_state_underflow_clamp_event_count",
+    "Total AggregateStateUnderflowClamped events (diagnostic — accounting clamped to avoid underflow)",
+    (d) => d.aggregateStateUnderflowClampCount,
+  );
+  eventGauge(
+    "rewards_harvest_failed_event_count",
+    "Total RewardsHarvestFailed events (low-level revert from rollup harvest)",
+    (d) => d.rewardsHarvestFailedCount,
+  );
+  eventGauge(
+    "reward_rollup_tracked_event_count",
+    "Total RewardRollupTracked events (rollup added to sequencer reward tracking)",
+    (d) => d.rewardRollupTrackedCount,
+  );
+  eventGauge(
+    "reward_rollup_removed_event_count",
+    "Total RewardRollupRemoved events (drained legacy rollup removed from tracking)",
+    (d) => d.rewardRollupRemovedCount,
+  );
 
   // -- Withdrawal queue --
   eventGauge(

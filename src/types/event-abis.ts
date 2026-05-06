@@ -236,6 +236,15 @@ export const OllaVaultEventAbi = [
       { name: "providerShares", type: "uint256", indexed: false },
     ],
   },
+  {
+    type: "event",
+    name: "OperatorSet",
+    inputs: [
+      { name: "controller", type: "address", indexed: true },
+      { name: "operator", type: "address", indexed: true },
+      { name: "approved", type: "bool", indexed: false },
+    ],
+  },
 ] as const;
 
 export const SafetyModuleEventAbi = [
@@ -268,6 +277,11 @@ export const SafetyModuleEventAbi = [
     type: "event",
     name: "RateDropLimitUpdated",
     inputs: [{ name: "minRateDropBps", type: "uint256", indexed: false }],
+  },
+  {
+    type: "event",
+    name: "RateHighWaterMarkUpdated",
+    inputs: [{ name: "rateHighWaterMark", type: "uint256", indexed: false }],
   },
   {
     type: "event",
@@ -323,6 +337,29 @@ export const StakingManagerEventAbi = [
   },
   {
     type: "event",
+    name: "RewardsHarvestFailed",
+    inputs: [{ name: "reason", type: "bytes", indexed: false }],
+  },
+  {
+    type: "event",
+    name: "RewardRollupTracked",
+    inputs: [{ name: "rollup", type: "address", indexed: true }],
+  },
+  {
+    type: "event",
+    name: "RewardRollupRemoved",
+    inputs: [{ name: "rollup", type: "address", indexed: true }],
+  },
+  {
+    type: "event",
+    name: "RewardsHarvestedFromRollup",
+    inputs: [
+      { name: "rollup", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
     name: "AttesterRemoved",
     inputs: [{ name: "attester", type: "address", indexed: true }],
   },
@@ -341,6 +378,25 @@ export const StakingManagerEventAbi = [
     inputs: [
       { name: "attester", type: "address", indexed: true },
       { name: "recoveredAmount", type: "uint256", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "FullySlashedAttesterPurged",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "cachedStake", type: "uint256", indexed: true },
+      { name: "reason", type: "bytes", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "AggregateStateUnderflowClamped",
+    inputs: [
+      { name: "attester", type: "address", indexed: true },
+      { name: "field", type: "bytes32", indexed: true },
+      { name: "currentAmount", type: "uint256", indexed: false },
+      { name: "requestedDecrease", type: "uint256", indexed: false },
     ],
   },
 ] as const;

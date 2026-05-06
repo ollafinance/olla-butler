@@ -330,10 +330,11 @@ export class OllaProtocolClient {
   }
 
   async scrapeSafetyModuleData(): Promise<SafetyModuleData> {
-    const [isPaused, depositCap, minRateDropBps, maxQueueRatioBps, maxAccountingDelay, withdrawalMinimum] = await Promise.all([
+    const [isPaused, depositCap, minRateDropBps, rateHighWaterMark, maxQueueRatioBps, maxAccountingDelay, withdrawalMinimum] = await Promise.all([
       this.safetyModuleContract.read.isPaused(),
       this.safetyModuleContract.read.depositCap(),
       this.safetyModuleContract.read.minRateDropBps(),
+      this.safetyModuleContract.read.rateHighWaterMark(),
       this.safetyModuleContract.read.maxQueueRatioBps(),
       this.safetyModuleContract.read.maxAccountingDelay(),
       this.safetyModuleContract.read.withdrawalMinimum(),
@@ -343,6 +344,7 @@ export class OllaProtocolClient {
       isPaused,
       depositCap,
       minRateDropBps,
+      rateHighWaterMark,
       maxQueueRatioBps,
       maxAccountingDelay,
       withdrawalMinimum,

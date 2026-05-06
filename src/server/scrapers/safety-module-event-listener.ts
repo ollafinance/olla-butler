@@ -55,6 +55,11 @@ export const createSafetyModuleEventListener = (
         case "RateDropLimitUpdated":
           console.log(`${tag} RateDropLimitUpdated minRateDropBps=${log.args.minRateDropBps}`);
           break;
+        case "RateHighWaterMarkUpdated":
+          console.log(
+            `${tag} RateHighWaterMarkUpdated rateHighWaterMark=${formatEther(log.args.rateHighWaterMark)}`,
+          );
+          break;
         case "QueueRatioLimitUpdated":
           console.log(`${tag} QueueRatioLimitUpdated maxQueueRatioBps=${log.args.maxQueueRatioBps}`);
           break;

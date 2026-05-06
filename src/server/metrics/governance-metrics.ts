@@ -83,6 +83,17 @@ export const initGovernanceMetrics = () => {
     }
   });
 
+  const rateHighWaterMarkGovGauge = createObservableGauge("gov_rate_high_water_mark", {
+    description: "Rate high-water mark used by the rate-drop circuit breaker (governance-settable via setRateHighWaterMark)",
+  });
+  rateHighWaterMarkGovGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, state] of getAllNetworkStates().entries()) {
+      if (state.safetyModuleData) {
+        result.observe(Number(state.safetyModuleData.rateHighWaterMark) / WEI_DIVISOR, { network });
+      }
+    }
+  });
+
   const maxQueueRatioBpsGauge = createObservableGauge("gov_max_queue_ratio_bps", {
     description: "Withdrawal queue ratio threshold for circuit breaker in basis points (governance-settable)",
   });
