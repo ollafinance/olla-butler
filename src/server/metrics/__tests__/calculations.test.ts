@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   exchangeRateChangeBps,
   isRebalanceOverdue,
-  bufferUtilizationPct,
   capitalEfficiencyPct,
   rewardsAprPct,
   keyQueueToAttesterRatio,
@@ -59,21 +58,6 @@ describe("isRebalanceOverdue", () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const lastRebalance = BigInt(nowSeconds - 7200);
     expect(isRebalanceOverdue(lastRebalance, 3600, RebalanceStep.Done)).toBe(false);
-  });
-});
-
-describe("bufferUtilizationPct", () => {
-  it("computes normal ratio", () => {
-    // 50 / 100 = 50%
-    expect(bufferUtilizationPct(50n * 10n ** 18n, 100n * 10n ** 18n)).toBe(50);
-  });
-
-  it("returns 0 when target is zero", () => {
-    expect(bufferUtilizationPct(50n * 10n ** 18n, 0n)).toBe(0);
-  });
-
-  it("handles over-buffered case", () => {
-    expect(bufferUtilizationPct(150n * 10n ** 18n, 100n * 10n ** 18n)).toBe(150);
   });
 });
 

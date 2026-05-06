@@ -22,14 +22,6 @@ export const OllaCoreEventAbi = [
   },
   {
     type: "event",
-    name: "TargetBufferedAssetsUpdated",
-    inputs: [
-      { name: "oldBuffer", type: "uint256", indexed: false },
-      { name: "newBuffer", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
     name: "RebalanceGasThresholdUpdated",
     inputs: [
       { name: "oldThreshold", type: "uint256", indexed: false },
@@ -168,27 +160,6 @@ export const OllaVaultEventAbi = [
     inputs: [
       { name: "available", type: "uint256", indexed: false },
       { name: "used", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "InstantRedemption",
-    inputs: [
-      { name: "owner", type: "address", indexed: true },
-      { name: "recipient", type: "address", indexed: true },
-      { name: "shares", type: "uint256", indexed: false },
-      { name: "grossAssets", type: "uint256", indexed: false },
-      { name: "fee", type: "uint256", indexed: false },
-      { name: "netAssets", type: "uint256", indexed: false },
-      { name: "exchangeRate", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "InstantRedemptionFeeUpdated",
-    inputs: [
-      { name: "oldFeeBP", type: "uint256", indexed: false },
-      { name: "newFeeBP", type: "uint256", indexed: false },
     ],
   },
   {

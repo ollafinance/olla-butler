@@ -84,11 +84,6 @@ export const createOllaCoreEventListener = (
             `${tag} TreasuryFeeSplitUpdated ${log.args.oldSplitBP} → ${log.args.newSplitBP} bps`,
           );
           break;
-        case "TargetBufferedAssetsUpdated":
-          console.log(
-            `${tag} TargetBufferedAssetsUpdated ${formatEther(log.args.oldBuffer)} → ${formatEther(log.args.newBuffer)}`,
-          );
-          break;
         case "RebalanceGasThresholdUpdated":
           console.log(
             `${tag} RebalanceGasThresholdUpdated ${log.args.oldThreshold} → ${log.args.newThreshold}`,

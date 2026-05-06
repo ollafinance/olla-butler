@@ -218,13 +218,12 @@ export class OllaProtocolClient {
   }
 
   async scrapeCoreData(): Promise<CoreData> {
-    const [totalAssets, exchangeRate, protocolFeeBP, treasuryFeeSplitBP, targetBufferedAssets, rebalanceCooldown, rebalanceGasThreshold, accountingState, latestReport, rebalanceProgress, flowCounters] =
+    const [totalAssets, exchangeRate, protocolFeeBP, treasuryFeeSplitBP, rebalanceCooldown, rebalanceGasThreshold, accountingState, latestReport, rebalanceProgress, flowCounters] =
       await Promise.all([
         this.coreContract.read.totalAssets(),
         this.coreContract.read.exchangeRate(),
         this.coreContract.read.protocolFeeBP(),
         this.coreContract.read.treasuryFeeSplitBP(),
-        this.coreContract.read.targetBufferedAssets(),
         this.coreContract.read.rebalanceCooldown(),
         this.coreContract.read.rebalanceGasThreshold(),
         this.coreContract.read.accountingState(),
@@ -238,7 +237,6 @@ export class OllaProtocolClient {
       exchangeRate,
       protocolFeeBP,
       treasuryFeeSplitBP,
-      targetBufferedAssets,
       rebalanceCooldown,
       rebalanceGasThreshold,
       accountingState: {
@@ -273,7 +271,7 @@ export class OllaProtocolClient {
   }
 
   async scrapeVaultData(): Promise<VaultData> {
-    const [bufferedAssets, pendingWithdrawalAssets, pendingWithdrawalShares, cumulativeDeposits, cumulativeWithdrawals, totalAssets, instantRedemptionFeeBP, availableForInstantRedemption, stAztecTotalSupply] =
+    const [bufferedAssets, pendingWithdrawalAssets, pendingWithdrawalShares, cumulativeDeposits, cumulativeWithdrawals, totalAssets, stAztecTotalSupply] =
       await Promise.all([
         this.vaultContract.read.bufferedAssets(),
         this.vaultContract.read.pendingWithdrawalAssets(),
@@ -281,8 +279,6 @@ export class OllaProtocolClient {
         this.vaultContract.read.cumulativeDeposits(),
         this.vaultContract.read.cumulativeWithdrawals(),
         this.vaultContract.read.totalAssets(),
-        this.vaultContract.read.instantRedemptionFeeBP(),
-        this.vaultContract.read.availableForInstantRedemption(),
         this.stAztecContract.read.totalSupply(),
       ]);
 
@@ -293,8 +289,6 @@ export class OllaProtocolClient {
       cumulativeDeposits,
       cumulativeWithdrawals,
       totalAssets,
-      instantRedemptionFeeBP,
-      availableForInstantRedemption,
       stAztecTotalSupply,
       lastUpdated: new Date(),
     };

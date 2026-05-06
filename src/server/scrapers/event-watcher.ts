@@ -49,9 +49,6 @@ function createEmptyEventData(): EventData {
     depositVolume: 0n,
     redeemRequestCount: 0,
     redeemRequestVolume: 0n,
-    instantRedemptionCount: 0,
-    instantRedemptionVolume: 0n,
-    instantRedemptionFees: 0n,
     withdrawalClaimCount: 0,
     withdrawalClaimVolume: 0n,
     rebalanceCount: 0,
@@ -422,11 +419,6 @@ export class EventWatcher extends AbstractScraper {
             govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "treasuryFeeSplitBP", String(log.args.oldSplitBP), String(log.args.newSplitBP), "config_change"));
             console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldSplitBP} → ${log.args.newSplitBP} at block ${log.blockNumber}`);
             break;
-          case "TargetBufferedAssetsUpdated":
-            this.eventData.configChangeCount++;
-            govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "targetBufferedAssets", formatEther(log.args.oldBuffer), formatEther(log.args.newBuffer), "config_change"));
-            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${formatEther(log.args.oldBuffer)} → ${formatEther(log.args.newBuffer)} at block ${log.blockNumber}`);
-            break;
           case "RebalanceGasThresholdUpdated":
             this.eventData.configChangeCount++;
             govEvents.push(this.toGovernanceEvent(log, "OllaCore", blockTimestamps, "rebalanceGasThreshold", String(log.args.oldThreshold), String(log.args.newThreshold), "config_change"));
@@ -465,19 +457,9 @@ export class EventWatcher extends AbstractScraper {
             this.eventData.redeemRequestCount++;
             this.eventData.redeemRequestVolume += log.args.assets;
             break;
-          case "InstantRedemption":
-            this.eventData.instantRedemptionCount++;
-            this.eventData.instantRedemptionVolume += log.args.grossAssets;
-            this.eventData.instantRedemptionFees += log.args.fee;
-            break;
           case "WithdrawalClaimed":
             this.eventData.withdrawalClaimCount++;
             this.eventData.withdrawalClaimVolume += log.args.assets;
-            break;
-          case "InstantRedemptionFeeUpdated":
-            this.eventData.configChangeCount++;
-            govEvents.push(this.toGovernanceEvent(log, "Vault", blockTimestamps, "instantRedemptionFeeBP", String(log.args.oldFeeBP), String(log.args.newFeeBP), "config_change"));
-            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldFeeBP} → ${log.args.newFeeBP} at block ${log.blockNumber}`);
             break;
         }
       }

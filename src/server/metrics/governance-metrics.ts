@@ -37,17 +37,6 @@ export const initGovernanceMetrics = () => {
     }
   });
 
-  const targetBufferGauge = createObservableGauge("gov_target_buffered_assets", {
-    description: "Target liquid assets buffer (governance-settable)",
-  });
-  targetBufferGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.coreData) {
-        result.observe(Number(state.coreData.targetBufferedAssets) / WEI_DIVISOR, { network });
-      }
-    }
-  });
-
   const protocolFeeGauge = createObservableGauge("gov_protocol_fee_bp", {
     description: "Protocol fee in basis points (governance-settable)",
   });
@@ -124,19 +113,6 @@ export const initGovernanceMetrics = () => {
     for (const [network, state] of getAllNetworkStates().entries()) {
       if (state.safetyModuleData) {
         result.observe(Number(state.safetyModuleData.withdrawalMinimum) / WEI_DIVISOR, { network });
-      }
-    }
-  });
-
-  // === Vault governance params ===
-
-  const instantRedemptionFeeGauge = createObservableGauge("gov_instant_redemption_fee_bp", {
-    description: "Instant redemption fee in basis points (governance-settable)",
-  });
-  instantRedemptionFeeGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.vaultData) {
-        result.observe(Number(state.vaultData.instantRedemptionFeeBP), { network });
       }
     }
   });

@@ -27,8 +27,7 @@ export class VaultScraper extends AbstractScraper {
       console.log(
         `[${this.name}/${this.network}] Buffered: ${formatEther(data.bufferedAssets)} | ` +
         `PendingWd: ${formatEther(data.pendingWithdrawalAssets)} | ` +
-        `stAztec supply: ${formatEther(data.stAztecTotalSupply)} | ` +
-        `InstantRedeemAvail: ${formatEther(data.availableForInstantRedemption)}`,
+        `stAztec supply: ${formatEther(data.stAztecTotalSupply)}`,
       );
     } catch (error) {
       console.error(`[${this.name}/${this.network}] Error during scrape:`, error);

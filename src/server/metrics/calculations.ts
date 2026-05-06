@@ -36,15 +36,6 @@ export function isRebalanceOverdue(
 }
 
 /**
- * Buffer utilization as a percentage: bufferedAssets / targetBufferedAssets * 100.
- * Returns 0 if target is zero.
- */
-export function bufferUtilizationPct(buffered: bigint, target: bigint): number {
-  if (target === 0n) return 0;
-  return Number((buffered * 10000n) / target) / 100;
-}
-
-/**
  * Capital efficiency: deployed / deployable capital, in percent.
  *
  * Numerator is the staked principal (productive). Denominator is the pool the

@@ -66,7 +66,6 @@ export type CoreData = {
   exchangeRate: bigint;
   protocolFeeBP: number;
   treasuryFeeSplitBP: number;
-  targetBufferedAssets: bigint;
   rebalanceCooldown: number;
   rebalanceGasThreshold: number;
   accountingState: AccountingState;
@@ -83,8 +82,6 @@ export type VaultData = {
   cumulativeDeposits: bigint;
   cumulativeWithdrawals: bigint;
   totalAssets: bigint;
-  instantRedemptionFeeBP: bigint;
-  availableForInstantRedemption: bigint;
   stAztecTotalSupply: bigint;
   lastUpdated: Date;
 };
@@ -226,9 +223,6 @@ export type EventData = {
   depositVolume: bigint;
   redeemRequestCount: number;
   redeemRequestVolume: bigint;
-  instantRedemptionCount: number;
-  instantRedemptionVolume: bigint;
-  instantRedemptionFees: bigint;
   withdrawalClaimCount: number;
   withdrawalClaimVolume: bigint;
   // Operations

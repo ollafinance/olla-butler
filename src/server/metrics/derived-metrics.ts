@@ -9,7 +9,6 @@ import { getAllNetworkStates } from "../state/index.js";
 import {
   exchangeRateChangeBps,
   isRebalanceOverdue,
-  bufferUtilizationPct,
   capitalEfficiencyPct,
   rewardsAprPct,
   keyQueueToAttesterRatio,
@@ -53,22 +52,6 @@ export const initDerivedMetrics = () => {
           state.coreData.rebalanceProgress.step,
         );
         result.observe(overdue ? 1 : 0, { network });
-      }
-    }
-  });
-
-  // Buffer utilization percentage
-  const bufferUtilizationGauge = createObservableGauge("buffer_utilization_pct", {
-    description: "Buffered assets as percentage of target buffer",
-  });
-  bufferUtilizationGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.coreData && state.vaultData) {
-        const pct = bufferUtilizationPct(
-          state.vaultData.bufferedAssets,
-          state.coreData.targetBufferedAssets,
-        );
-        result.observe(pct, { network });
       }
     }
   });

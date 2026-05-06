@@ -76,21 +76,6 @@ export const initEventMetrics = () => {
     (d) => Number(d.redeemRequestVolume) / WEI_DIVISOR,
   );
   eventGauge(
-    "instant_redemption_event_count",
-    "Total InstantRedemption events",
-    (d) => d.instantRedemptionCount,
-  );
-  eventGauge(
-    "instant_redemption_event_volume",
-    "Cumulative instant redemption gross volume (token units)",
-    (d) => Number(d.instantRedemptionVolume) / WEI_DIVISOR,
-  );
-  eventGauge(
-    "instant_redemption_fees_volume",
-    "Cumulative instant redemption fees (token units)",
-    (d) => Number(d.instantRedemptionFees) / WEI_DIVISOR,
-  );
-  eventGauge(
     "withdrawal_claim_event_count",
     "Total WithdrawalClaimed events",
     (d) => d.withdrawalClaimCount,

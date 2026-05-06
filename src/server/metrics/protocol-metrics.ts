@@ -119,18 +119,6 @@ export const initProtocolMetrics = () => {
     }
   });
 
-  // Target buffered assets
-  const targetBufferGauge = createObservableGauge("target_buffered_assets", {
-    description: "Target liquid assets buffer",
-  });
-  targetBufferGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.coreData) {
-        result.observe(Number(state.coreData.targetBufferedAssets) / WEI_DIVISOR, { network });
-      }
-    }
-  });
-
   // Rebalance step
   const rebalanceStepGauge = createObservableGauge("rebalance_step", {
     description: "Current rebalance step (0=Harvest, 1=PullUnstaked, 2=FinalizeWithdrawals, 3=InitiateUnstake, 4=StakeSurplus, 5=Done)",

@@ -53,28 +53,6 @@ export const initVaultMetrics = () => {
     }
   });
 
-  const instantRedemptionFeeGauge = createObservableGauge("instant_redemption_fee_bp", {
-    description: "Instant redemption fee in basis points",
-  });
-  instantRedemptionFeeGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.vaultData) {
-        result.observe(Number(state.vaultData.instantRedemptionFeeBP), { network });
-      }
-    }
-  });
-
-  const instantRedemptionAvailableGauge = createObservableGauge("available_for_instant_redemption", {
-    description: "Assets available for instant redemption",
-  });
-  instantRedemptionAvailableGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.vaultData) {
-        result.observe(Number(state.vaultData.availableForInstantRedemption) / WEI_DIVISOR, { network });
-      }
-    }
-  });
-
   const vaultCumulativeDepositsGauge = createObservableGauge("vault_cumulative_deposits", {
     description: "Cumulative deposits tracked by vault",
   });
