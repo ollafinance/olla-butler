@@ -47,8 +47,10 @@ export type RebalanceProgress = {
 export type FlowCounters = {
   cumulativeDeposits: bigint;
   cumulativeWithdrawals: bigint;
+  cumulativeSlashingAdjustments: bigint;
   latestReportCumulativeDeposits: bigint;
   latestReportCumulativeWithdrawals: bigint;
+  latestReportCumulativeSlashingAdjustments: bigint;
 };
 
 export type StakingState = {

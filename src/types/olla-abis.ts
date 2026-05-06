@@ -80,8 +80,10 @@ export const OllaCoreAbi = [
         components: [
           { name: "cumulativeDeposits", type: "uint256" },
           { name: "cumulativeWithdrawals", type: "uint256" },
+          { name: "cumulativeSlashingAdjustments", type: "uint256" },
           { name: "latestReportCumulativeDeposits", type: "uint256" },
           { name: "latestReportCumulativeWithdrawals", type: "uint256" },
+          { name: "latestReportCumulativeSlashingAdjustments", type: "uint256" },
         ],
       },
     ],

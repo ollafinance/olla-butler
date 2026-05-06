@@ -251,8 +251,10 @@ export class OllaProtocolClient {
       flowCounters: {
         cumulativeDeposits: flowCounters.cumulativeDeposits,
         cumulativeWithdrawals: flowCounters.cumulativeWithdrawals,
+        cumulativeSlashingAdjustments: flowCounters.cumulativeSlashingAdjustments,
         latestReportCumulativeDeposits: flowCounters.latestReportCumulativeDeposits,
         latestReportCumulativeWithdrawals: flowCounters.latestReportCumulativeWithdrawals,
+        latestReportCumulativeSlashingAdjustments: flowCounters.latestReportCumulativeSlashingAdjustments,
       },
       lastUpdated: new Date(),
     };

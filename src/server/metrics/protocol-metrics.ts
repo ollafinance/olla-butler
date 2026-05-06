@@ -181,6 +181,18 @@ export const initProtocolMetrics = () => {
     }
   });
 
+  // Cumulative slashing adjustments
+  const cumulativeSlashingAdjustmentsGauge = createObservableGauge("cumulative_slashing_adjustments", {
+    description: "Lifetime cumulative slashing adjustments applied to withdrawals",
+  });
+  cumulativeSlashingAdjustmentsGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network, state] of getAllNetworkStates().entries()) {
+      if (state.coreData) {
+        result.observe(Number(state.coreData.flowCounters.cumulativeSlashingAdjustments) / WEI_DIVISOR, { network });
+      }
+    }
+  });
+
   // Data freshness
   const coreDataAgeGauge = createObservableGauge("core_data_age_seconds", {
     description: "Seconds since core data was last scraped",

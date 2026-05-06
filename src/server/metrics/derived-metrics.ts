@@ -130,17 +130,30 @@ export const initDerivedMetrics = () => {
     }
   });
 
-  // Net flow since last report
+  // Net flow since last report — mirrors OllaCore._computeNetFlows. Each
+  // cumulative diff is clamped at 0 (matches the on-chain unsigned-to-signed
+  // bridge), and slashing-adjustment-since-report is subtracted from raw
+  // withdrawals to form a signed netWithdrawals: when adjustments exceed user
+  // withdrawals, the excess flows through as a positive contribution to
+  // netFlows rather than being silently dropped.
   const netFlowSinceReportGauge = createObservableGauge("net_flow_since_report", {
-    description: "Net deposits minus withdrawals since last accounting update (token units)",
+    description: "Signed net flow since last accounting update: netDeposits - (rawWithdrawals - slashingAdjustments) (token units)",
   });
   netFlowSinceReportGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
       if (state.coreData) {
         const fc = state.coreData.flowCounters;
-        const depositsSinceReport = fc.cumulativeDeposits - fc.latestReportCumulativeDeposits;
-        const withdrawalsSinceReport = fc.cumulativeWithdrawals - fc.latestReportCumulativeWithdrawals;
-        const netFlow = depositsSinceReport - withdrawalsSinceReport;
+        const netDeposits = fc.cumulativeDeposits > fc.latestReportCumulativeDeposits
+          ? fc.cumulativeDeposits - fc.latestReportCumulativeDeposits
+          : 0n;
+        const rawWithdrawals = fc.cumulativeWithdrawals > fc.latestReportCumulativeWithdrawals
+          ? fc.cumulativeWithdrawals - fc.latestReportCumulativeWithdrawals
+          : 0n;
+        const adjustmentsSinceReport = fc.cumulativeSlashingAdjustments > fc.latestReportCumulativeSlashingAdjustments
+          ? fc.cumulativeSlashingAdjustments - fc.latestReportCumulativeSlashingAdjustments
+          : 0n;
+        const netWithdrawals = rawWithdrawals - adjustmentsSinceReport;
+        const netFlow = netDeposits - netWithdrawals;
         result.observe(Number(netFlow) / WEI_DIVISOR, { network });
       }
     }
