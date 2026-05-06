@@ -47,7 +47,7 @@ function createEmptyEventData(): EventData {
     depositCount: 0,
     depositVolume: 0n,
     redeemRequestCount: 0,
-    redeemRequestVolume: 0n,
+    redeemRequestSharesVolume: 0n,
     withdrawalClaimCount: 0,
     withdrawalClaimVolume: 0n,
     rebalanceCount: 0,
@@ -448,7 +448,7 @@ export class EventWatcher extends AbstractScraper {
             break;
           case "RedeemRequest":
             this.eventData.redeemRequestCount++;
-            this.eventData.redeemRequestVolume += log.args.assets;
+            this.eventData.redeemRequestSharesVolume += log.args.shares;
             break;
           case "WithdrawalRequested":
             this.eventData.withdrawalRequestedCount++;

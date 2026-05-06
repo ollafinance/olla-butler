@@ -198,7 +198,7 @@ export const OllaVaultEventAbi = [
       { name: "owner", type: "address", indexed: true },
       { name: "requestId", type: "uint256", indexed: true },
       { name: "sender", type: "address", indexed: false },
-      { name: "assets", type: "uint256", indexed: false },
+      { name: "shares", type: "uint256", indexed: false },
     ],
   },
   {

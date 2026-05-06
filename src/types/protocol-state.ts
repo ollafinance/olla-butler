@@ -217,7 +217,7 @@ export type EventData = {
   depositCount: number;
   depositVolume: bigint;
   redeemRequestCount: number;
-  redeemRequestVolume: bigint;
+  redeemRequestSharesVolume: bigint;
   withdrawalClaimCount: number;
   withdrawalClaimVolume: bigint;
   // Operations

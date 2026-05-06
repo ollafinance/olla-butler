@@ -71,9 +71,9 @@ export const initEventMetrics = () => {
   );
   eventGauge("redeem_request_event_count", "Total RedeemRequest events", (d) => d.redeemRequestCount);
   eventGauge(
-    "redeem_request_event_volume",
-    "Cumulative redeem request volume (token units)",
-    (d) => Number(d.redeemRequestVolume) / WEI_DIVISOR,
+    "redeem_request_event_shares_volume",
+    "Cumulative redeem request volume in shares (ERC-7540 redeem requests are share-denominated)",
+    (d) => Number(d.redeemRequestSharesVolume) / WEI_DIVISOR,
   );
   eventGauge(
     "withdrawal_claim_event_count",
