@@ -24,10 +24,15 @@ import {
   WithdrawalQueueScraper,
   EventWatcher,
   AttesterScraper,
-  RollupEventListener,
+  ContractEventListener,
+  createRollupEventListener,
+  createWithdrawalQueueEventListener,
+  createOllaCoreEventListener,
+  createSafetyModuleEventListener,
 } from "./scrapers/index.js";
 import { initNetworkState, updateContractAddresses } from "./state/index.js";
 import { initAttesterRegistry } from "./state/attester-registry.js";
+import { initWithdrawalQueueRegistry } from "./state/withdrawal-queue-registry.js";
 import { OllaProtocolClient } from "../core/components/OllaProtocolClient.js";
 import {
   TransactionExecutor,
@@ -50,7 +55,7 @@ async function initializeNetwork(
   network: string,
   config: ButlerConfig,
   scraperManager: ScraperManager,
-  rollupListeners: RollupEventListener[],
+  eventListeners: ContractEventListener[],
 ): Promise<void> {
   console.log(`\n--- Initializing network: ${network} ---`);
 
@@ -100,23 +105,78 @@ async function initializeNetwork(
     const attesterScraper = new AttesterScraper(network, protocolClient);
     scraperManager.register(attesterScraper, 60_000); // 60s
 
-    if (config.ETHEREUM_NODE_WS_URL) {
-      console.log(`[${network}] Starting WS rollup event listener (${config.ETHEREUM_NODE_WS_URL})...`);
-      rollupListeners.push(
-        new RollupEventListener(
-          network,
-          config.ETHEREUM_NODE_WS_URL,
-          config.ETHEREUM_CHAIN_ID,
-          protocolClient,
-          attesterScraper,
-        ),
-      );
-    } else {
-      console.log(`[${network}] WS rollup event listener disabled (ETHEREUM_NODE_WS_URL not set)`);
-    }
+    console.log(`[${network}] Starting WS rollup event listener (${config.ETHEREUM_NODE_WS_URL})...`);
+    eventListeners.push(
+      createRollupEventListener(
+        network,
+        config.ETHEREUM_NODE_WS_URL,
+        config.ETHEREUM_CHAIN_ID,
+        protocolClient,
+        attesterScraper,
+      ),
+    );
   } else {
     console.log(`[${network}] Attester monitoring disabled (ATTESTER_SCAN_START_BLOCK not set)`);
   }
+
+  // Withdrawal queue unclaimed counter (opt-in via WITHDRAWAL_QUEUE_SCAN_START_BLOCK)
+  if (config.WITHDRAWAL_QUEUE_SCAN_START_BLOCK !== undefined) {
+    console.log(
+      `[${network}] Initializing withdrawal queue registry from block ${config.WITHDRAWAL_QUEUE_SCAN_START_BLOCK}...`,
+    );
+    await initWithdrawalQueueRegistry(
+      network,
+      protocolClient.getPublicClient(),
+      addresses.withdrawalQueue as Address,
+      BigInt(config.WITHDRAWAL_QUEUE_SCAN_START_BLOCK),
+    );
+
+    console.log(`[${network}] Starting WS withdrawal queue event listener...`);
+    eventListeners.push(
+      createWithdrawalQueueEventListener(
+        network,
+        config.ETHEREUM_NODE_WS_URL,
+        config.ETHEREUM_CHAIN_ID,
+        protocolClient,
+        withdrawalQueueScraper,
+        vaultScraper,
+      ),
+    );
+  } else {
+    console.log(
+      `[${network}] Withdrawal queue unclaimed counter disabled (WITHDRAWAL_QUEUE_SCAN_START_BLOCK not set)`,
+    );
+  }
+
+  // OllaCore protocol event listener. Drives an immediate refresh of
+  // core/vault/staking on AccountingUpdated, Rebalanced, and governance
+  // setters — closes the polling staleness window for derived metrics.
+  console.log(`[${network}] Starting WS OllaCore event listener...`);
+  eventListeners.push(
+    createOllaCoreEventListener(
+      network,
+      config.ETHEREUM_NODE_WS_URL,
+      config.ETHEREUM_CHAIN_ID,
+      protocolClient,
+      coreScraper,
+      vaultScraper,
+      stakingScraper,
+    ),
+  );
+
+  // SafetyModule event listener. Pause/Unpause and CircuitBreakerTriggered
+  // are alerting-critical; governance setters update the cap/limit values
+  // surfaced in metrics.
+  console.log(`[${network}] Starting WS SafetyModule event listener...`);
+  eventListeners.push(
+    createSafetyModuleEventListener(
+      network,
+      config.ETHEREUM_NODE_WS_URL,
+      config.ETHEREUM_CHAIN_ID,
+      protocolClient,
+      safetyModuleScraper,
+    ),
+  );
 
   // Transaction executor (opt-in via TX_EXECUTOR_ENABLED + BUTLER_PRIVATE_KEY)
   if (config.TX_EXECUTOR_ENABLED && config.BUTLER_PRIVATE_KEY) {
@@ -231,12 +291,12 @@ export const startServer = async (specificNetwork?: string) => {
   initScraperHealthMetrics();
 
   const scraperManager = new ScraperManager();
-  const rollupListeners: RollupEventListener[] = [];
+  const eventListeners: ContractEventListener[] = [];
 
   initLog("Initializing all networks...");
   for (const [network, config] of networkConfigs.entries()) {
     try {
-      await initializeNetwork(network, config, scraperManager, rollupListeners);
+      await initializeNetwork(network, config, scraperManager, eventListeners);
     } catch (error) {
       console.error(`[${network}] Failed to initialize network:`, error);
       console.warn(
@@ -249,14 +309,14 @@ export const startServer = async (specificNetwork?: string) => {
   await scraperManager.init();
   await scraperManager.start();
 
-  if (rollupListeners.length > 0) {
-    initLog(`Starting ${rollupListeners.length} rollup event listener(s)...`);
-    for (const listener of rollupListeners) {
+  if (eventListeners.length > 0) {
+    initLog(`Starting ${eventListeners.length} event listener(s)...`);
+    for (const listener of eventListeners) {
       try {
         listener.start();
       } catch (error) {
         console.error(
-          `[${listener.network}] Failed to start rollup event listener:`,
+          `[${listener.network}] Failed to start event listener ${listener.name}:`,
           error,
         );
       }
@@ -274,12 +334,12 @@ export const startServer = async (specificNetwork?: string) => {
 
     console.log("\n\n=== Shutting down gracefully ===");
     try {
-      for (const listener of rollupListeners) {
+      for (const listener of eventListeners) {
         try {
           listener.shutdown();
         } catch (err) {
           console.error(
-            `[${listener.network}] Error shutting down rollup event listener:`,
+            `[${listener.network}] Error shutting down event listener ${listener.name}:`,
             err,
           );
         }

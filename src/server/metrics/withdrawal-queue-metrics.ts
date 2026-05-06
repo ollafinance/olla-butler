@@ -5,6 +5,11 @@
 import type { Attributes, ObservableResult } from "@opentelemetry/api";
 import { createObservableGauge } from "./registry.js";
 import { getAllNetworkStates } from "../state/index.js";
+import {
+  getUnclaimedAssets,
+  getUnclaimedCount,
+  isUnclaimedRegistryInitialized,
+} from "../state/withdrawal-queue-registry.js";
 
 const WEI_DIVISOR = 1e18;
 
@@ -54,16 +59,29 @@ export const initWithdrawalQueueMetrics = () => {
     }
   });
 
+  // Finalized-but-unclaimed: derived from per-event counters maintained by
+  // the WithdrawalQueue WS listener (the contract has no on-chain aggregate
+  // for this). Only emitted on networks where the listener has backfilled
+  // and is running — otherwise a 0 reading would be indistinguishable from
+  // "no listener configured".
   const unclaimedCountGauge = createObservableGauge("withdrawal_queue_unclaimed_count", {
-    description: "Number of finalized but unclaimed requests (nextUnfinalized - nextPendingId)",
+    description: "Number of finalized but unclaimed withdrawal requests",
   });
   unclaimedCountGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.withdrawalQueueData) {
-        const count = state.withdrawalQueueData.nextUnfinalized - state.withdrawalQueueData.nextPendingId;
-        if (count >= 0n) {
-          result.observe(Number(count), { network });
-        }
+    for (const [network] of getAllNetworkStates().entries()) {
+      if (isUnclaimedRegistryInitialized(network)) {
+        result.observe(getUnclaimedCount(network), { network });
+      }
+    }
+  });
+
+  const unclaimedAssetsGauge = createObservableGauge("withdrawal_queue_unclaimed_assets", {
+    description: "Total assets in finalized but unclaimed withdrawal requests",
+  });
+  unclaimedAssetsGauge.addCallback((result: ObservableResult<Attributes>) => {
+    for (const [network] of getAllNetworkStates().entries()) {
+      if (isUnclaimedRegistryInitialized(network)) {
+        result.observe(Number(getUnclaimedAssets(network)) / WEI_DIVISOR, { network });
       }
     }
   });

@@ -112,8 +112,8 @@ export const AztecRollupAbi = [
  * lifecycle (sourced from IStakingCore.sol in aztec-packages/l1-contracts).
  * The Rollup contract inherits IStaking and emits these via StakingLib.
  *
- * Used by RollupEventListener to subscribe via WebSocket and trigger an
- * AttesterScraper refresh on any lifecycle change without polling.
+ * Used by createRollupEventListener to subscribe via WebSocket and trigger
+ * an AttesterScraper refresh on any lifecycle change without polling.
  */
 export const AztecRollupEventAbi = [
   {

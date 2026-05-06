@@ -69,8 +69,8 @@ function buildConfig(network: string) {
     ),
     ETHEREUM_NODE_WS_URL: parseConfigField(
       "ETHEREUM_NODE_WS_URL",
-      z.string().startsWith("ws").optional(),
-      process.env.ETHEREUM_NODE_WS_URL || undefined,
+      z.string().startsWith("ws"),
+      process.env.ETHEREUM_NODE_WS_URL,
     ),
     OLLA_CORE_ADDRESS: parseConfigField(
       "OLLA_CORE_ADDRESS",
@@ -91,6 +91,11 @@ function buildConfig(network: string) {
       "ATTESTER_SCAN_START_BLOCK",
       z.coerce.number().int().nonnegative().optional(),
       process.env.ATTESTER_SCAN_START_BLOCK || undefined,
+    ),
+    WITHDRAWAL_QUEUE_SCAN_START_BLOCK: parseConfigField(
+      "WITHDRAWAL_QUEUE_SCAN_START_BLOCK",
+      z.coerce.number().int().nonnegative().optional(),
+      process.env.WITHDRAWAL_QUEUE_SCAN_START_BLOCK || undefined,
     ),
     TX_EXECUTOR_ENABLED: parseConfigField(
       "TX_EXECUTOR_ENABLED",
