@@ -14,7 +14,6 @@ import {
   StakingManagerAbi,
   StakingProviderRegistryAbi,
   SafetyModuleAbi,
-  WithdrawalQueueAbi,
   ERC20Abi,
   AztecRollupRegistryAbi,
   AztecRollupAbi,
@@ -24,7 +23,6 @@ import {
   type VaultData,
   type StakingData,
   type SafetyModuleData,
-  type WithdrawalQueueData,
   type RebalanceProgress,
   type AttesterState,
   RebalanceStep,
@@ -35,7 +33,6 @@ type OllaVaultContract = GetContractReturnType<typeof OllaVaultAbi, PublicClient
 type StakingManagerContract = GetContractReturnType<typeof StakingManagerAbi, PublicClient>;
 type StakingProviderRegistryContract = GetContractReturnType<typeof StakingProviderRegistryAbi, PublicClient>;
 type SafetyModuleContract = GetContractReturnType<typeof SafetyModuleAbi, PublicClient>;
-type WithdrawalQueueContract = GetContractReturnType<typeof WithdrawalQueueAbi, PublicClient>;
 type ERC20Contract = GetContractReturnType<typeof ERC20Abi, PublicClient>;
 type AztecRollupRegistryContract = GetContractReturnType<typeof AztecRollupRegistryAbi, PublicClient>;
 type AztecRollupContract = GetContractReturnType<typeof AztecRollupAbi, PublicClient>;
@@ -59,7 +56,6 @@ export class OllaProtocolClient {
   private stakingManagerContract!: StakingManagerContract;
   private stakingProviderRegistryContract!: StakingProviderRegistryContract;
   private safetyModuleContract!: SafetyModuleContract;
-  private withdrawalQueueContract!: WithdrawalQueueContract;
   private stAztecContract!: ERC20Contract;
   private rollupRegistryContract!: AztecRollupRegistryContract;
   private canonicalRollupContract!: AztecRollupContract;
@@ -104,14 +100,13 @@ export class OllaProtocolClient {
         this.coreContract.read.asset(),
       ]);
 
-    // Initialize vault contract to discover withdrawal queue
+    // Initialize vault contract (which now also handles the withdrawal queue
+    // — formerly a separate proxy — folded into OllaVault).
     this.vaultContract = getContract({
       address: getAddress(vaultAddr),
       abi: OllaVaultAbi,
       client: this.client,
     });
-
-    const withdrawalQueueAddr = await this.vaultContract.read.withdrawalQueue();
 
     // Initialize staking manager to discover provider registry
     this.stakingManagerContract = getContract({
@@ -172,12 +167,6 @@ export class OllaProtocolClient {
       client: this.client,
     });
 
-    this.withdrawalQueueContract = getContract({
-      address: getAddress(withdrawalQueueAddr),
-      abi: WithdrawalQueueAbi,
-      client: this.client,
-    });
-
     this.stAztecContract = getContract({
       address: getAddress(stAztecAddr),
       abi: ERC20Abi,
@@ -191,7 +180,6 @@ export class OllaProtocolClient {
       stakingManager: stakingManagerAddr,
       rewardsAccumulator: rewardsAccumulatorAddr,
       safetyModule: safetyModuleAddr,
-      withdrawalQueue: withdrawalQueueAddr,
       stakingProviderRegistry: stakingProviderRegistryAddr,
       asset: assetAddr,
       rollupRegistry: rollupRegistryAddr,
@@ -271,16 +259,27 @@ export class OllaProtocolClient {
   }
 
   async scrapeVaultData(): Promise<VaultData> {
-    const [bufferedAssets, pendingWithdrawalAssets, pendingWithdrawalShares, cumulativeDeposits, cumulativeWithdrawals, totalAssets, stAztecTotalSupply] =
-      await Promise.all([
-        this.vaultContract.read.bufferedAssets(),
-        this.vaultContract.read.pendingWithdrawalAssets(),
-        this.vaultContract.read.pendingWithdrawalShares(),
-        this.vaultContract.read.cumulativeDeposits(),
-        this.vaultContract.read.cumulativeWithdrawals(),
-        this.vaultContract.read.totalAssets(),
-        this.stAztecContract.read.totalSupply(),
-      ]);
+    const [
+      bufferedAssets,
+      pendingWithdrawalAssets,
+      pendingWithdrawalShares,
+      cumulativeDeposits,
+      cumulativeWithdrawals,
+      totalAssets,
+      nextWithdrawalRequestId,
+      nextUnfinalizedWithdrawalRequestId,
+      stAztecTotalSupply,
+    ] = await Promise.all([
+      this.vaultContract.read.bufferedAssets(),
+      this.vaultContract.read.pendingWithdrawalAssets(),
+      this.vaultContract.read.pendingWithdrawalShares(),
+      this.vaultContract.read.cumulativeDeposits(),
+      this.vaultContract.read.cumulativeWithdrawals(),
+      this.vaultContract.read.totalAssets(),
+      this.vaultContract.read.nextWithdrawalRequestId(),
+      this.vaultContract.read.nextUnfinalizedWithdrawalRequestId(),
+      this.stAztecContract.read.totalSupply(),
+    ]);
 
     return {
       bufferedAssets,
@@ -289,6 +288,8 @@ export class OllaProtocolClient {
       cumulativeDeposits,
       cumulativeWithdrawals,
       totalAssets,
+      nextWithdrawalRequestId,
+      nextUnfinalizedWithdrawalRequestId,
       stAztecTotalSupply,
       lastUpdated: new Date(),
     };
@@ -343,28 +344,6 @@ export class OllaProtocolClient {
       maxQueueRatioBps,
       maxAccountingDelay,
       withdrawalMinimum,
-      lastUpdated: new Date(),
-    };
-  }
-
-  async scrapeWithdrawalQueueData(): Promise<WithdrawalQueueData> {
-    const [nextRequestId, nextPendingId, totalPendingAssets, totalPendingShares, nextUnfinalized, gasThreshold] =
-      await Promise.all([
-        this.withdrawalQueueContract.read.nextRequestId(),
-        this.withdrawalQueueContract.read.nextPendingId(),
-        this.withdrawalQueueContract.read.totalPendingAssets(),
-        this.withdrawalQueueContract.read.totalPendingShares(),
-        this.withdrawalQueueContract.read.nextUnfinalized(),
-        this.withdrawalQueueContract.read.gasThreshold(),
-      ]);
-
-    return {
-      nextRequestId: BigInt(nextRequestId),
-      nextPendingId: BigInt(nextPendingId),
-      totalPendingAssets,
-      totalPendingShares,
-      nextUnfinalized,
-      gasThreshold,
       lastUpdated: new Date(),
     };
   }

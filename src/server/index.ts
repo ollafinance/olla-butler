@@ -6,7 +6,6 @@ import {
   initVaultMetrics,
   initStakingMetrics,
   initSafetyMetrics,
-  initWithdrawalQueueMetrics,
   initEventMetrics,
   initDerivedMetrics,
   initScraperHealthMetrics,
@@ -21,12 +20,11 @@ import {
   VaultScraper,
   StakingScraper,
   SafetyModuleScraper,
-  WithdrawalQueueScraper,
   EventWatcher,
   AttesterScraper,
   ContractEventListener,
   createRollupEventListener,
-  createWithdrawalQueueEventListener,
+  createVaultEventListener,
   createOllaCoreEventListener,
   createSafetyModuleEventListener,
 } from "./scrapers/index.js";
@@ -86,9 +84,6 @@ async function initializeNetwork(
   const safetyModuleScraper = new SafetyModuleScraper(network, protocolClient);
   scraperManager.register(safetyModuleScraper, 60_000); // 60s
 
-  const withdrawalQueueScraper = new WithdrawalQueueScraper(network, protocolClient);
-  scraperManager.register(withdrawalQueueScraper, 30_000); // 30s
-
   const eventWatcher = new EventWatcher(network, protocolClient.getPublicClient(), addresses);
   scraperManager.register(eventWatcher, 12_000); // 12s — near-realtime event monitoring
 
@@ -119,7 +114,11 @@ async function initializeNetwork(
     console.log(`[${network}] Attester monitoring disabled (ATTESTER_SCAN_START_BLOCK not set)`);
   }
 
-  // Withdrawal queue unclaimed counter (opt-in via WITHDRAWAL_QUEUE_SCAN_START_BLOCK)
+  // Vault event listener: drives the unclaimed-withdrawal counter from
+  // per-request finalize/claim events and triggers vault scraper refreshes.
+  // The unclaimed counter requires a historical scan to backfill state, so
+  // it's opt-in via WITHDRAWAL_QUEUE_SCAN_START_BLOCK; the listener itself
+  // only starts once the scan has completed.
   if (config.WITHDRAWAL_QUEUE_SCAN_START_BLOCK !== undefined) {
     console.log(
       `[${network}] Initializing withdrawal queue registry from block ${config.WITHDRAWAL_QUEUE_SCAN_START_BLOCK}...`,
@@ -127,24 +126,23 @@ async function initializeNetwork(
     await initWithdrawalQueueRegistry(
       network,
       protocolClient.getPublicClient(),
-      addresses.withdrawalQueue as Address,
+      addresses.vault as Address,
       BigInt(config.WITHDRAWAL_QUEUE_SCAN_START_BLOCK),
     );
 
-    console.log(`[${network}] Starting WS withdrawal queue event listener...`);
+    console.log(`[${network}] Starting WS vault event listener...`);
     eventListeners.push(
-      createWithdrawalQueueEventListener(
+      createVaultEventListener(
         network,
         config.ETHEREUM_NODE_WS_URL,
         config.ETHEREUM_CHAIN_ID,
         protocolClient,
-        withdrawalQueueScraper,
         vaultScraper,
       ),
     );
   } else {
     console.log(
-      `[${network}] Withdrawal queue unclaimed counter disabled (WITHDRAWAL_QUEUE_SCAN_START_BLOCK not set)`,
+      `[${network}] Vault event listener disabled (WITHDRAWAL_QUEUE_SCAN_START_BLOCK not set)`,
     );
   }
 
@@ -282,7 +280,6 @@ export const startServer = async (specificNetwork?: string) => {
   initVaultMetrics();
   initStakingMetrics();
   initSafetyMetrics();
-  initWithdrawalQueueMetrics();
   initEventMetrics();
   initDerivedMetrics();
   initAttesterMetrics();

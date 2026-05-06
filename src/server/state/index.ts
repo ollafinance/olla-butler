@@ -3,10 +3,9 @@
  *
  * Manages per-network state for:
  * - Core data (TVL, exchange rate, accounting, rebalance)
- * - Vault data (buffered assets, withdrawals, stAztec supply)
+ * - Vault data (buffered assets, withdrawal queue state, stAztec supply)
  * - Staking data (attester counts, staking state, key queue)
  * - Safety module data (pause state, deposit cap)
- * - Withdrawal queue data (pending requests)
  * - Contract addresses (discovered from core)
  */
 
@@ -15,7 +14,6 @@ import type {
   VaultData,
   StakingData,
   SafetyModuleData,
-  WithdrawalQueueData,
   ContractAddresses,
   EventData,
   AttesterData,
@@ -32,7 +30,6 @@ export type NetworkState = {
   vaultData: VaultData | null;
   stakingData: StakingData | null;
   safetyModuleData: SafetyModuleData | null;
-  withdrawalQueueData: WithdrawalQueueData | null;
   contractAddresses: ContractAddresses | null;
   eventData: EventData | null;
   attesterData: AttesterData | null;
@@ -52,7 +49,6 @@ const getNetworkState = (network: string): NetworkState => {
       vaultData: null,
       stakingData: null,
       safetyModuleData: null,
-      withdrawalQueueData: null,
       contractAddresses: null,
       eventData: null,
       attesterData: null,
@@ -124,16 +120,6 @@ export const updateSafetyModuleData = (network: string, data: SafetyModuleData) 
 
 export const getSafetyModuleData = (network: string): SafetyModuleData | null => {
   return getNetworkState(network).safetyModuleData;
-};
-
-// Withdrawal queue data
-export const updateWithdrawalQueueData = (network: string, data: WithdrawalQueueData) => {
-  const state = getNetworkState(network);
-  state.withdrawalQueueData = data;
-};
-
-export const getWithdrawalQueueData = (network: string): WithdrawalQueueData | null => {
-  return getNetworkState(network).withdrawalQueueData;
 };
 
 // Contract addresses

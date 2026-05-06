@@ -6,7 +6,6 @@ import {
   OllaVaultEventAbi,
   SafetyModuleEventAbi,
   StakingManagerEventAbi,
-  WithdrawalQueueEventAbi,
   RewardsAccumulatorEventAbi,
   ERC1967UpgradedEventAbi,
 } from "../../types/index.js";
@@ -337,7 +336,7 @@ export class EventWatcher extends AbstractScraper {
     const recentEvents: RecentEvent[] = [];
     const govEvents: GovernanceEvent[] = [];
 
-    const [coreResult, vaultResult, safetyResult, stakingResult, wqResult, raResult] =
+    const [coreResult, vaultResult, safetyResult, stakingResult, raResult] =
       await Promise.allSettled([
         this.client.getContractEvents({
           address: addr.core as Address,
@@ -364,12 +363,6 @@ export class EventWatcher extends AbstractScraper {
           ...blockRange,
         }),
         this.client.getContractEvents({
-          address: addr.withdrawalQueue as Address,
-          abi: WithdrawalQueueEventAbi,
-          strict: true,
-          ...blockRange,
-        }),
-        this.client.getContractEvents({
           address: addr.rewardsAccumulator as Address,
           abi: RewardsAccumulatorEventAbi,
           strict: true,
@@ -380,7 +373,7 @@ export class EventWatcher extends AbstractScraper {
     let totalEvents = 0;
 
     // Fetch block timestamps for all events (for accurate historical timestamps)
-    const allFulfilledLogs = [coreResult, vaultResult, safetyResult, stakingResult, wqResult, raResult]
+    const allFulfilledLogs = [coreResult, vaultResult, safetyResult, stakingResult, raResult]
       .filter((r): r is PromiseFulfilledResult<typeof coreResult extends PromiseSettledResult<infer T> ? T : never> => r.status === "fulfilled")
       .map((r) => r.value);
     const blockTimestamps = await this.fetchBlockTimestamps(allFulfilledLogs);
@@ -443,7 +436,7 @@ export class EventWatcher extends AbstractScraper {
       );
     }
 
-    // -- Vault events --
+    // -- Vault events (includes withdrawal queue events; queue is folded into the vault) --
     if (vaultResult.status === "fulfilled") {
       totalEvents += vaultResult.value.length;
       for (const log of vaultResult.value) {
@@ -456,6 +449,20 @@ export class EventWatcher extends AbstractScraper {
           case "RedeemRequest":
             this.eventData.redeemRequestCount++;
             this.eventData.redeemRequestVolume += log.args.assets;
+            break;
+          case "WithdrawalRequested":
+            this.eventData.withdrawalRequestedCount++;
+            this.eventData.withdrawalRequestedVolume += log.args.assetsExpected;
+            break;
+          case "WithdrawalRequestFinalized":
+            this.eventData.withdrawalFinalizedCount++;
+            this.eventData.withdrawalFinalizedVolume += log.args.assets;
+            break;
+          case "WithdrawalAdjusted":
+            this.eventData.withdrawalAdjustedCount++;
+            console.warn(
+              `[${this.name}/${this.network}] WARNING: WithdrawalAdjusted (slashing) request #${log.args.id} at block ${log.blockNumber}`,
+            );
             break;
           case "WithdrawalClaimed":
             this.eventData.withdrawalClaimCount++;
@@ -592,40 +599,6 @@ export class EventWatcher extends AbstractScraper {
       );
     }
 
-    // -- Withdrawal queue events --
-    if (wqResult.status === "fulfilled") {
-      totalEvents += wqResult.value.length;
-      for (const log of wqResult.value) {
-        recentEvents.push(this.toRecentEvent(log, "WithdrawalQueue", blockTimestamps));
-        switch (log.eventName) {
-          case "WithdrawalRequested":
-            this.eventData.withdrawalRequestedCount++;
-            this.eventData.withdrawalRequestedVolume += log.args.assetsExpected;
-            break;
-          case "WithdrawalFinalized":
-            this.eventData.withdrawalFinalizedCount++;
-            this.eventData.withdrawalFinalizedVolume += log.args.assets;
-            break;
-          case "WithdrawalAdjusted":
-            this.eventData.withdrawalAdjustedCount++;
-            console.warn(
-              `[${this.name}/${this.network}] WARNING: WithdrawalAdjusted (slashing) request #${log.args.id} at block ${log.blockNumber}`,
-            );
-            break;
-          case "GasThresholdUpdated":
-            this.eventData.configChangeCount++;
-            govEvents.push(this.toGovernanceEvent(log, "WithdrawalQueue", blockTimestamps, "withdrawalQueueGasThreshold", String(log.args.oldThreshold), String(log.args.newThreshold), "config_change"));
-            console.log(`[${this.name}/${this.network}] Config change: ${log.eventName} ${log.args.oldThreshold} → ${log.args.newThreshold} at block ${log.blockNumber}`);
-            break;
-        }
-      }
-    } else {
-      console.error(
-        `[${this.name}/${this.network}] Failed to poll withdrawal queue events:`,
-        wqResult.reason,
-      );
-    }
-
     // -- Rewards accumulator events --
     if (raResult.status === "fulfilled") {
       totalEvents += raResult.value.length;
@@ -646,7 +619,6 @@ export class EventWatcher extends AbstractScraper {
       ["StakingManager", addr.stakingManager],
       ["RewardsAccumulator", addr.rewardsAccumulator],
       ["SafetyModule", addr.safetyModule],
-      ["WithdrawalQueue", addr.withdrawalQueue],
       ["StakingProviderRegistry", addr.stakingProviderRegistry],
     ];
 

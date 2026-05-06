@@ -82,6 +82,10 @@ export type VaultData = {
   cumulativeDeposits: bigint;
   cumulativeWithdrawals: bigint;
   totalAssets: bigint;
+  /** ID that will be assigned to the next new withdrawal request. Total requests created = this - 1 (IDs start at 1). */
+  nextWithdrawalRequestId: bigint;
+  /** ID of the next request to finalize. Finalized request count = this - 1; backlog = nextWithdrawalRequestId - this. */
+  nextUnfinalizedWithdrawalRequestId: bigint;
   stAztecTotalSupply: bigint;
   lastUpdated: Date;
 };
@@ -108,16 +112,6 @@ export type SafetyModuleData = {
   lastUpdated: Date;
 };
 
-export type WithdrawalQueueData = {
-  nextRequestId: bigint;
-  nextPendingId: bigint;
-  totalPendingAssets: bigint;
-  totalPendingShares: bigint;
-  nextUnfinalized: bigint;
-  gasThreshold: number;
-  lastUpdated: Date;
-};
-
 export type ContractAddresses = {
   core: string;
   vault: string;
@@ -125,7 +119,6 @@ export type ContractAddresses = {
   stakingManager: string;
   rewardsAccumulator: string;
   safetyModule: string;
-  withdrawalQueue: string;
   stakingProviderRegistry: string;
   asset: string;
   rollupRegistry: string;

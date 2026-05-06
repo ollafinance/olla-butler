@@ -147,6 +147,34 @@ export const OllaVaultEventAbi = [
   },
   {
     type: "event",
+    name: "WithdrawalRequested",
+    inputs: [
+      { name: "id", type: "uint256", indexed: true },
+      { name: "controller", type: "address", indexed: true },
+      { name: "shares", type: "uint256", indexed: false },
+      { name: "assetsExpected", type: "uint256", indexed: false },
+      { name: "rate", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "WithdrawalRequestFinalized",
+    inputs: [
+      { name: "id", type: "uint256", indexed: true },
+      { name: "assets", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "WithdrawalAdjusted",
+    inputs: [
+      { name: "id", type: "uint256", indexed: true },
+      { name: "originalAmount", type: "uint256", indexed: false },
+      { name: "adjustedAmount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
     name: "WithdrawalClaimed",
     inputs: [
       { name: "requestId", type: "uint256", indexed: false },
@@ -313,54 +341,6 @@ export const StakingManagerEventAbi = [
     inputs: [
       { name: "attester", type: "address", indexed: true },
       { name: "recoveredAmount", type: "uint256", indexed: true },
-    ],
-  },
-] as const;
-
-export const WithdrawalQueueEventAbi = [
-  {
-    type: "event",
-    name: "WithdrawalRequested",
-    inputs: [
-      { name: "id", type: "uint256", indexed: true },
-      { name: "recipient", type: "address", indexed: true },
-      { name: "shares", type: "uint256", indexed: false },
-      { name: "assetsExpected", type: "uint256", indexed: false },
-      { name: "rate", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "WithdrawalFinalized",
-    inputs: [
-      { name: "id", type: "uint256", indexed: true },
-      { name: "assets", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "WithdrawalClaimed",
-    inputs: [
-      { name: "id", type: "uint256", indexed: true },
-      { name: "recipient", type: "address", indexed: true },
-      { name: "assetsExpected", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "WithdrawalAdjusted",
-    inputs: [
-      { name: "id", type: "uint256", indexed: true },
-      { name: "originalAmount", type: "uint256", indexed: false },
-      { name: "adjustedAmount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "GasThresholdUpdated",
-    inputs: [
-      { name: "oldThreshold", type: "uint256", indexed: false },
-      { name: "newThreshold", type: "uint256", indexed: false },
     ],
   },
 ] as const;

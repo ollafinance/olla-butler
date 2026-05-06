@@ -117,19 +117,6 @@ export const initGovernanceMetrics = () => {
     }
   });
 
-  // === WithdrawalQueue governance params ===
-
-  const wqGasThresholdGauge = createObservableGauge("gov_withdrawal_queue_gas_threshold", {
-    description: "Gas threshold for withdrawal queue finalization (governance-settable)",
-  });
-  wqGasThresholdGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.withdrawalQueueData) {
-        result.observe(state.withdrawalQueueData.gasThreshold, { network });
-      }
-    }
-  });
-
   // === Governance event metrics ===
 
   const govEventCountGauge = createObservableGauge("governance_event_count", {

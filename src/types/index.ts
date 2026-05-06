@@ -4,7 +4,6 @@ export {
   StakingManagerAbi,
   StakingProviderRegistryAbi,
   SafetyModuleAbi,
-  WithdrawalQueueAbi,
   ERC20Abi,
 } from "./olla-abis.js";
 
@@ -13,7 +12,6 @@ export {
   OllaVaultEventAbi,
   SafetyModuleEventAbi,
   StakingManagerEventAbi,
-  WithdrawalQueueEventAbi,
   RewardsAccumulatorEventAbi,
   ERC1967UpgradedEventAbi,
 } from "./event-abis.js";
@@ -33,7 +31,6 @@ export {
   type VaultData,
   type StakingData,
   type SafetyModuleData,
-  type WithdrawalQueueData,
   type ContractAddresses,
   type RecentEvent,
   type GovernanceEvent,

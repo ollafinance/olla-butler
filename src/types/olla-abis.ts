@@ -96,7 +96,8 @@ export const OllaVaultAbi = [
   { type: "function", name: "cumulativeDeposits", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "cumulativeWithdrawals", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "totalAssets", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
-  { type: "function", name: "withdrawalQueue", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
+  { type: "function", name: "nextWithdrawalRequestId", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
+  { type: "function", name: "nextUnfinalizedWithdrawalRequestId", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "core", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
   { type: "function", name: "asset", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
   { type: "function", name: "share", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
@@ -171,16 +172,6 @@ export const SafetyModuleAbi = [
   { type: "function", name: "withdrawalMinimum", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "CORE", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
   { type: "function", name: "VAULT", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
-] as const;
-
-export const WithdrawalQueueAbi = [
-  { type: "function", name: "nextRequestId", inputs: [], outputs: [{ type: "uint64" }], stateMutability: "view" },
-  { type: "function", name: "nextPendingId", inputs: [], outputs: [{ type: "uint64" }], stateMutability: "view" },
-  { type: "function", name: "totalPendingAssets", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
-  { type: "function", name: "totalPendingShares", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
-  { type: "function", name: "nextUnfinalized", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
-  { type: "function", name: "gasThreshold", inputs: [], outputs: [{ type: "uint32" }], stateMutability: "view" },
-  { type: "function", name: "vault", inputs: [], outputs: [{ type: "address" }], stateMutability: "view" },
 ] as const;
 
 export const ERC20Abi = [
