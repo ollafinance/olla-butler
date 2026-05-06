@@ -45,17 +45,28 @@ export const initSafetyMetrics = () => {
     }
   });
 
-  // Withdrawal queue ratio (pending withdrawals / vault TVL) — mirrors the
-  // SafetyModule's maxQueueRatioBps circuit breaker, which compares pending
-  // against the vault's totalAssets, not core's.
+  // Withdrawal queue ratio — mirrors SafetyModule.checkQueueRatio: pending /
+  // (pending + totalAssets). totalAssets() already subtracts pending, so the
+  // gross denominator must add it back.
+  //
+  // Snapshot-stale vs. on-chain breaker: butler reads the stored
+  // `pendingWithdrawalAssets`, while checkQueueRatio is fed a live
+  // `_pricingPendingAssets()` recomputed from current rate. The two
+  // reconcile at every accounting update and drift between updates by
+  // ~yield_rate * staleness — sub-bps under typical conditions, bounded by
+  // the protocol's accounting-liveness check. Use a margin from
+  // maxQueueRatioBps when alerting.
   const queueRatioGauge = createObservableGauge("withdrawal_queue_ratio_pct", {
-    description: "Withdrawal queue ratio percentage (vault.pendingWithdrawalAssets / vault.totalAssets * 100)",
+    description: "Withdrawal queue ratio percentage (pending / (pending + totalAssets) * 100, snapshot-stale)",
   });
   queueRatioGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.vaultData && state.vaultData.totalAssets > 0n) {
-        const bps = (state.vaultData.pendingWithdrawalAssets * 10000n) / state.vaultData.totalAssets;
-        result.observe(Number(bps) / 100, { network });
+      if (state.vaultData) {
+        const gross = state.vaultData.pendingWithdrawalAssets + state.vaultData.totalAssets;
+        if (gross > 0n) {
+          const bps = (state.vaultData.pendingWithdrawalAssets * 10000n) / gross;
+          result.observe(Number(bps) / 100, { network });
+        }
       }
     }
   });

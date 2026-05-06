@@ -98,35 +98,18 @@ export const initWithdrawalQueueMetrics = () => {
     }
   });
 
-  const finalizedRatioGauge = createObservableGauge("withdrawal_queue_finalized_ratio_pct", {
-    description: "Percentage of withdrawal requests that have been finalized ((nextUnfinalized - 1) / (nextRequestId - 1) * 100)",
-  });
-  finalizedRatioGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.withdrawalQueueData) {
-        const total = state.withdrawalQueueData.nextRequestId - 1n;
-        if (total > 0n) {
-          // nextUnfinalized points to the first unfinalized request, so all before it are finalized
-          const finalized = state.withdrawalQueueData.nextUnfinalized - 1n;
-          result.observe(Number(finalized * 100n / total), { network });
-        } else {
-          result.observe(0, { network });
-        }
-      }
-    }
-  });
-
+  // WithdrawalQueue.nextUnfinalized() aliases nextPendingId; both pointers
+  // advance on finalization, so this measures the finalized fraction.
   const fulfillmentRatioGauge = createObservableGauge("withdrawal_queue_fulfillment_ratio_pct", {
-    description: "Percentage of withdrawal requests that have been claimed ((nextPendingId - 1) / (nextRequestId - 1) * 100)",
+    description: "Percentage of withdrawal requests that have been finalized ((nextPendingId - 1) / (nextRequestId - 1) * 100)",
   });
   fulfillmentRatioGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
       if (state.withdrawalQueueData) {
         const total = state.withdrawalQueueData.nextRequestId - 1n;
         if (total > 0n) {
-          // nextPendingId points to the first unclaimed request, so all before it are claimed
-          const claimed = state.withdrawalQueueData.nextPendingId - 1n;
-          result.observe(Number(claimed * 100n / total), { network });
+          const finalized = state.withdrawalQueueData.nextPendingId - 1n;
+          result.observe(Number(finalized * 10000n / total) / 100, { network });
         } else {
           result.observe(0, { network });
         }
