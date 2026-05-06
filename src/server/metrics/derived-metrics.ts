@@ -34,15 +34,21 @@ export const initDerivedMetrics = () => {
     }
   });
 
-  // Rebalance overdue flag
+  // Rebalance overdue flag — measured from the last Rebalanced event, not
+  // the accounting-report timestamp. Skipped until the event listener has
+  // observed at least one rebalance, otherwise we'd report a 0 reading
+  // indistinguishable from "no listener configured".
   const rebalanceOverdueGauge = createObservableGauge("rebalance_overdue", {
-    description: "1 if rebalance cooldown has elapsed and step is not Done, 0 otherwise",
+    description: "1 if rebalance cooldown has elapsed since last Rebalanced event and step is not Done, 0 otherwise",
   });
   rebalanceOverdueGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.coreData) {
+      if (state.coreData && state.eventData?.lastRebalanceTimestamp) {
+        const lastRebalanceSeconds = BigInt(
+          Math.floor(state.eventData.lastRebalanceTimestamp.getTime() / 1000),
+        );
         const overdue = isRebalanceOverdue(
-          state.coreData.latestReport.timestamp,
+          lastRebalanceSeconds,
           state.coreData.rebalanceCooldown,
           state.coreData.rebalanceProgress.step,
         );
@@ -67,34 +73,42 @@ export const initDerivedMetrics = () => {
     }
   });
 
-  // Capital efficiency
+  // Capital efficiency: staked / (staked + buffer + rewardsAccumulator + claimableRewards).
+  // Denominator is the idle pool the rebalancer can address; pending
+  // withdrawals/unstakes are excluded as they aren't operationally redeployable.
   const capitalEfficiencyGauge = createObservableGauge("capital_efficiency_pct", {
-    description: "Percentage of TVL earning yield (stakedPrincipal / totalAssets)",
+    description: "Percentage of operationally-deployable capital that is staked (staked / (staked + buffer + rewardsAccumulator + claimableRewards))",
   });
   capitalEfficiencyGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.coreData) {
+      if (state.coreData && state.vaultData) {
         const pct = capitalEfficiencyPct(
           state.coreData.accountingState.stakedPrincipal,
-          state.coreData.totalAssets,
+          state.vaultData.bufferedAssets,
+          state.coreData.accountingState.rewardsAccumulatorBalance,
+          state.coreData.accountingState.claimableRewards,
         );
         result.observe(pct, { network });
       }
     }
   });
 
-  // Rewards APR
+  // Rewards APR — annualized over the closed report period
+  // (current report timestamp − previous report timestamp). Skipped until a
+  // second report has been observed so the period boundary is known.
   const rewardsAprGauge = createObservableGauge("rewards_apr_pct", {
-    description: "Annualized yield percentage based on latest report",
+    description: "Annualized yield percentage from the most recent closed accounting period",
   });
   rewardsAprGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.coreData) {
+      if (state.coreData && state.previousReportTimestamp !== null) {
+        const periodSeconds = Number(
+          state.coreData.latestReport.timestamp - state.previousReportTimestamp,
+        );
         const apr = rewardsAprPct(
           state.coreData.latestReport.grossRewards,
           state.coreData.accountingState.stakedPrincipal,
-          state.coreData.latestReport.timestamp,
-          Math.floor(Date.now() / 1000),
+          periodSeconds,
         );
         result.observe(apr, { network });
       }
@@ -117,19 +131,7 @@ export const initDerivedMetrics = () => {
     }
   });
 
-  // Accounting staleness in seconds
-  const accountingStalenessGauge = createObservableGauge("accounting_staleness_seconds", {
-    description: "Seconds since last accounting update",
-    unit: "seconds",
-  });
-  accountingStalenessGauge.addCallback((result: ObservableResult<Attributes>) => {
-    for (const [network, state] of getAllNetworkStates().entries()) {
-      if (state.coreData) {
-        const staleness = Math.floor(Date.now() / 1000) - Number(state.coreData.latestReport.timestamp);
-        result.observe(staleness, { network });
-      }
-    }
-  });
+  // accounting_staleness_seconds is registered by safety-metrics.ts.
 
   // Time since last rebalance
   const rebalanceTimeSinceGauge = createObservableGauge("rebalance_time_since_seconds", {

@@ -99,15 +99,20 @@ export const initWithdrawalQueueMetrics = () => {
     }
   });
 
+  // Average size of finalized withdrawal requests. Numerator
+  // (vault.cumulativeWithdrawals) accumulates only when a request finalizes,
+  // so the denominator must be the count of finalized requests
+  // (nextPendingId - 1) — using nextRequestId would dilute by the pending
+  // backlog and bias the average low.
   const avgRequestSizeGauge = createObservableGauge("withdrawal_queue_avg_request_size", {
-    description: "Average withdrawal request size (cumulative withdrawals / total requests, token units)",
+    description: "Average finalized withdrawal request size (cumulative withdrawals / finalized requests, token units)",
   });
   avgRequestSizeGauge.addCallback((result: ObservableResult<Attributes>) => {
     for (const [network, state] of getAllNetworkStates().entries()) {
       if (state.withdrawalQueueData && state.vaultData) {
-        const totalRequests = state.withdrawalQueueData.nextRequestId - 1n;
-        if (totalRequests > 0n) {
-          const avg = Number(state.vaultData.cumulativeWithdrawals) / WEI_DIVISOR / Number(totalRequests);
+        const finalizedRequests = state.withdrawalQueueData.nextPendingId - 1n;
+        if (finalizedRequests > 0n) {
+          const avg = Number(state.vaultData.cumulativeWithdrawals) / WEI_DIVISOR / Number(finalizedRequests);
           result.observe(avg, { network });
         } else {
           result.observe(0, { network });

@@ -39,6 +39,7 @@ export type NetworkState = {
   executorData: ExecutorData | null;
   previousExchangeRate: bigint | null;
   previousExchangeRateTimestamp: Date | null;
+  previousReportTimestamp: bigint | null;
 };
 
 const networkStates = new Map<string, NetworkState>();
@@ -58,6 +59,7 @@ const getNetworkState = (network: string): NetworkState => {
       executorData: null,
       previousExchangeRate: null,
       previousExchangeRateTimestamp: null,
+      previousReportTimestamp: null,
     };
     networkStates.set(network, state);
   }
@@ -80,6 +82,12 @@ export const updateCoreData = (network: string, data: CoreData) => {
   if (state.coreData) {
     state.previousExchangeRate = state.coreData.exchangeRate;
     state.previousExchangeRateTimestamp = state.coreData.lastUpdated;
+    // Only rotate previousReportTimestamp when the on-chain report itself
+    // changed — otherwise routine polls would clobber the prior period
+    // boundary and collapse the APR period to ~0.
+    if (state.coreData.latestReport.timestamp !== data.latestReport.timestamp) {
+      state.previousReportTimestamp = state.coreData.latestReport.timestamp;
+    }
   }
   state.coreData = data;
 };
