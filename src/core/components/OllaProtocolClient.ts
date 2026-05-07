@@ -361,15 +361,18 @@ export class OllaProtocolClient {
    *
    * The StakingManager has no public getter for per-attester status, but the
    * storage layout is stable (UUPS upgradeable with gaps). The _attesterMap
-   * lives at slot 7, and AttesterInfo.status is at offset +3 from the mapping
-   * base slot for each key.
+   * lives at slot 8, and AttesterInfo.status is at offset +4 from the mapping
+   * base slot for each key (attester, stakedAmount, queueRollup, exitRollup +
+   * pendingExitAmount packed, then status).
+   *
+   * Verify with: `forge inspect StakingManager storage-layout` after upgrades.
    *
    * InternalAttesterStatus: 0=Inactive, 1=Queued, 2=Active, 3=Exiting
    */
   async scrapeAttesterInternalStatuses(attesterAddresses: string[]): Promise<Map<string, number>> {
     const stakingManagerAddr = getAddress(this.addresses!.stakingManager) as Address;
-    const ATTESTER_MAP_SLOT = 7n;
-    const STATUS_OFFSET = 3n;
+    const ATTESTER_MAP_SLOT = 8n;
+    const STATUS_OFFSET = 4n;
 
     const results = await Promise.all(
       attesterAddresses.map(async (addr) => {

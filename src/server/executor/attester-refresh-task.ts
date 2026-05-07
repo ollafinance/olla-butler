@@ -11,14 +11,20 @@ import { AbstractScraper } from "../scrapers/base-scraper.js";
 import { getAttesterData } from "../state/index.js";
 import type { TransactionExecutor } from "./tx-executor.js";
 
-/** All staleness reasons that warrant a refreshAttesterState call */
+/**
+ * Staleness reasons that warrant a refreshAttesterState call.
+ *
+ * "queued" is intentionally excluded: a Queued+NONE attester is either pre-flush
+ * (handled by EntryQueueFlushTask) or post-flush waiting on the rollup's own
+ * entry queue. In both cases _refreshSingleAttester returns early without
+ * changing state (StakingManager.sol:776-789), so calling refresh is wasteful.
+ */
 const REFRESH_REASONS = new Set([
   "slashing",
   "exit_undetected",
   "exit_exitable",
   "zombie",
   "fully_exited",
-  "queued",
   "activation_pending",
 ]);
 
