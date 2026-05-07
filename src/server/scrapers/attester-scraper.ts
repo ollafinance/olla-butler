@@ -68,6 +68,18 @@ export class AttesterScraper extends AbstractScraper {
 
       const attesterAddresses = getAttesters(this.network);
       if (attesterAddresses.length === 0) {
+        // Publish an empty snapshot so prior counts (e.g. exiting=3 after a
+        // batch refresh removed all tracked attesters) don't stick in metrics
+        // and so lastUpdated keeps advancing for the data-staleness alert.
+        const activationThreshold = await this.protocolClient.scrapeActivationThreshold();
+        const stakingData = getStakingData(this.network);
+        const empty = computeAttesterData(
+          [],
+          activationThreshold,
+          stakingData?.stakingState.stakedAmount,
+          new Map(),
+        );
+        updateAttesterData(this.network, empty);
         console.log(`[${this.name}/${this.network}] No attesters tracked`);
         return;
       }
