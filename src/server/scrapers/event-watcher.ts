@@ -123,6 +123,9 @@ export class EventWatcher extends AbstractScraper {
       const eventData: EventData = {
         ...parsed.eventData,
         lastUpdated: new Date(parsed.eventData.lastUpdated),
+        lastRebalanceTimestamp: parsed.eventData.lastRebalanceTimestamp
+          ? new Date(parsed.eventData.lastRebalanceTimestamp)
+          : null,
       };
       // Restore recent events with Date objects
       const recentEvents: RecentEvent[] | null = parsed.recentEvents
