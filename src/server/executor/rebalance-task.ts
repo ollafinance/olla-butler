@@ -17,6 +17,7 @@ import {
   getStakingData,
   getAttesterData,
   getEventData,
+  getSafetyModuleData,
 } from "../state/index.js";
 import { RebalanceStep, RebalanceStepNames, type CoreData } from "../../types/index.js";
 import type { TransactionExecutor } from "./tx-executor.js";
@@ -30,6 +31,19 @@ const PENDING_REWARDS_THRESHOLD_WEI = 10_000n * 10n ** 18n;
 
 /** Safety net — force a rebalance after this long even when no work signal triggers, to guard against missed signals. */
 const FORCED_REBALANCE_INTERVAL_S = 48 * 60 * 60;
+
+/**
+ * Safety margin subtracted from on-chain maxAccountingDelay to decide when accounting is
+ * "stale enough" that we should defer rebalancing until accounting is refreshed. Mirrors
+ * AccountingUpdateTask's threshold so the two tasks agree on the boundary: once accounting
+ * is stale enough for the accounting task to act, the rebalance task steps aside and lets it
+ * go first (a rebalance can itself touch checkAccountingLiveness and trip the breaker).
+ * Kept in sync with AccountingUpdateTask.SAFETY_MARGIN_S (2 hours).
+ */
+const ACCOUNTING_STALE_SAFETY_MARGIN_S = 2 * 60 * 60;
+
+/** Fallback accounting staleness threshold when on-chain maxAccountingDelay is unavailable: 1 hour. */
+const ACCOUNTING_STALE_FALLBACK_S = 60 * 60;
 
 /** Known reverts that are expected operational conditions, not errors */
 const KNOWN_REVERT_NAMES = new Set([
@@ -103,6 +117,8 @@ export class RebalanceTask extends AbstractScraper {
   /**
    * Decide whether to kick off a new rebalance cycle (step === Done).
    * Gates, in order:
+   *   0a. Paused — never start a new cycle while the SafetyModule circuit breaker is engaged.
+   *   0b. Accounting stale — defer to the accounting task; let updateAccounting() land first.
    *   1. On-chain cooldown — skip if the contract would revert anyway.
    *   2. Forced fallback — past FORCED_REBALANCE_INTERVAL_S, run regardless of work to guard against missed signals.
    *   3. Work predicate — only run if at least one meaningful action is queued:
@@ -113,6 +129,36 @@ export class RebalanceTask extends AbstractScraper {
    * If supporting state is incomplete (vault/staking/attester not yet scraped), default to running.
    */
   private shouldStartNewCycle(coreData: CoreData): boolean {
+    const safetyData = getSafetyModuleData(this.network);
+
+    // Gate 0a: don't start a new cycle while paused. The breaker is engaged; a rebalance
+    // would either revert or be inappropriate until the underlying condition is resolved.
+    if (safetyData?.isPaused) {
+      console.log(`[${this.name}/${this.network}] Skipping — SafetyModule is paused`);
+      return false;
+    }
+
+    // Gate 0b: if accounting is stale enough that the accounting task wants to update it,
+    // step aside so updateAccounting() runs first. This both enforces ordering and avoids
+    // a forced rebalance becoming a second path that trips the AccountingStale breaker.
+    const accountingThreshold =
+      safetyData && safetyData.maxAccountingDelay > 0n
+        ? Math.max(
+            Number(safetyData.maxAccountingDelay) - ACCOUNTING_STALE_SAFETY_MARGIN_S,
+            Math.floor(Number(safetyData.maxAccountingDelay) / 2),
+          )
+        : ACCOUNTING_STALE_FALLBACK_S;
+    const accountingStaleness =
+      Math.floor(Date.now() / 1000) - Number(coreData.latestReport.timestamp);
+    if (accountingStaleness >= accountingThreshold) {
+      console.log(
+        `[${this.name}/${this.network}] Skipping — accounting stale ` +
+          `(${Math.floor(accountingStaleness / 3600)}h ${Math.floor((accountingStaleness % 3600) / 60)}m, ` +
+          `threshold ${Math.floor(accountingThreshold / 3600)}h) — deferring to accounting update`,
+      );
+      return false;
+    }
+
     const eventData = getEventData(this.network);
 
     if (eventData?.lastRebalanceTimestamp) {

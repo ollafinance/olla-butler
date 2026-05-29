@@ -12,8 +12,10 @@ import { getCoreData, getSafetyModuleData } from "../state/index.js";
 import { RebalanceStep } from "../../types/index.js";
 import type { TransactionExecutor } from "./tx-executor.js";
 
-/** Safety margin subtracted from on-chain maxAccountingDelay: 15 minutes */
-const SAFETY_MARGIN_S = 15 * 60;
+/** Safety margin subtracted from on-chain maxAccountingDelay: 2 hours.
+ *  Generous enough to absorb RPC outages + confirmation latency so updateAccounting()
+ *  lands well before the on-chain hard limit trips the AccountingStale circuit breaker. */
+const SAFETY_MARGIN_S = 2 * 60 * 60;
 
 /** Fallback staleness threshold when on-chain value is unavailable: 1 hour */
 const FALLBACK_STALENESS_THRESHOLD_S = 60 * 60;
@@ -33,8 +35,8 @@ export class AccountingUpdateTask extends AbstractScraper {
 
   /**
    * Returns the staleness threshold in seconds.
-   * Uses on-chain maxAccountingDelay minus a 15-minute safety margin.
-   * E.g. if maxAccountingDelay = 7200s (2h), we trigger at 6300s (1h45m).
+   * Uses on-chain maxAccountingDelay minus a 2-hour safety margin.
+   * E.g. if maxAccountingDelay = 172800s (48h), we trigger at 165600s (46h).
    * Falls back to FALLBACK_STALENESS_THRESHOLD_S if on-chain value is unavailable.
    */
   private getStalenessThreshold(): number {
