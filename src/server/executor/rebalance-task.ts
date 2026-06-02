@@ -30,7 +30,7 @@ const MAX_STEPS_PER_RUN = 10;
 const PENDING_REWARDS_THRESHOLD_WEI = 10_000n * 10n ** 18n;
 
 /** Safety net — force a rebalance after this long even when no work signal triggers, to guard against missed signals. */
-const FORCED_REBALANCE_INTERVAL_S = 48 * 60 * 60;
+const FORCED_REBALANCE_INTERVAL_S = 72 * 60 * 60;
 
 /**
  * Safety margin subtracted from on-chain maxAccountingDelay to decide when accounting is
@@ -80,6 +80,18 @@ export class RebalanceTask extends AbstractScraper {
   private readonly executor: TransactionExecutor;
   private readonly protocolClient: OllaProtocolClient;
   private isRunning = false;
+
+  /**
+   * Epoch seconds of the last forced-rebalance attempt this process made.
+   *
+   * The forced safety net (Gate 2) cannot rely solely on `lastRebalanceTimestamp`, which only
+   * advances when an actual `Rebalanced` event fires. When a forced cycle finds no work it
+   * completes immediately on-chain WITHOUT emitting `Rebalanced`, so that timestamp never moves —
+   * which would make the forced gate re-trigger on every poll and spam no-op rebalance() calls.
+   * We record the attempt locally so the next forced run is held off for FORCED_REBALANCE_INTERVAL_S.
+   * In-memory only: after a restart the net may fire once more before settling, which is harmless.
+   */
+  private lastForcedAttemptS = 0;
 
   constructor(network: string, executor: TransactionExecutor, protocolClient: OllaProtocolClient) {
     super();
@@ -173,7 +185,15 @@ export class RebalanceTask extends AbstractScraper {
         return false;
       }
 
-      if (elapsed >= FORCED_REBALANCE_INTERVAL_S) {
+      // Gate 2: forced fallback. Key off the most recent of (a) the last real Rebalanced event
+      // and (b) our last forced attempt. A forced no-op cycle emits no Rebalanced event, so
+      // without (b) this gate would re-fire every poll and spam useless rebalance() calls.
+      const nowS = Math.floor(Date.now() / 1000);
+      const lastActivityS = Math.max(lastRebalanceS, this.lastForcedAttemptS);
+      const elapsedSinceActivity = nowS - lastActivityS;
+
+      if (elapsedSinceActivity >= FORCED_REBALANCE_INTERVAL_S) {
+        this.lastForcedAttemptS = nowS;
         console.log(
           `[${this.name}/${this.network}] Forcing rebalance — last completion was ${Math.floor(elapsed / 3600)}h ago`,
         );
