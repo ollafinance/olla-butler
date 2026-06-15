@@ -24,6 +24,9 @@ import type { ContractAddresses } from "../../types/index.js";
  * The estimate is still used when it exceeds this floor.
  */
 const GAS_FLOOR = 500_000n;
+const REBALANCE_GAS_FLOOR = 750_000n;
+const GAS_ESTIMATE_BUFFER_BP = 13_000n;
+const BP_DENOMINATOR = 10_000n;
 
 export interface TransactionExecutorConfig {
   rpcUrl: string;
@@ -86,12 +89,28 @@ export class TransactionExecutor {
     abi: readonly unknown[];
     functionName: string;
     args?: readonly unknown[];
-  }): Promise<bigint> {
+    floor?: bigint;
+    bufferBp?: bigint;
+  }): Promise<{ estimate: bigint; gas: bigint }> {
+    const { floor = GAS_FLOOR, bufferBp, ...contractArgs } = args;
     const estimate = await this.publicClient.estimateContractGas({
       account: this.account,
-      ...args,
+      ...contractArgs,
     });
-    return estimate > GAS_FLOOR ? estimate : GAS_FLOOR;
+    const bufferedEstimate = bufferBp
+      ? (estimate * bufferBp + BP_DENOMINATOR - 1n) / BP_DENOMINATOR
+      : estimate;
+    return {
+      estimate,
+      gas: bufferedEstimate > floor ? bufferedEstimate : floor,
+    };
+  }
+
+  private getRevertGasHint(receiptGasUsed: bigint, gasLimit: bigint): string {
+    if (receiptGasUsed * 100n >= gasLimit * 95n) {
+      return ` | possible out-of-gas: gas used ${receiptGasUsed} / limit ${gasLimit}`;
+    }
+    return "";
   }
 
   /**
@@ -101,7 +120,7 @@ export class TransactionExecutor {
     const coreAddr = getAddress(this.addresses.core);
     console.log(`[TxExecutor] Sending updateAccounting() to ${coreAddr}...`);
 
-    const gas = await this.estimateGasWithFloor({
+    const { gas } = await this.estimateGasWithFloor({
       address: coreAddr,
       abi: OllaCoreWriteAbi,
       functionName: "updateAccounting",
@@ -140,12 +159,15 @@ export class TransactionExecutor {
     const coreAddr = getAddress(this.addresses.core);
     console.log(`[TxExecutor] Sending rebalance() to ${coreAddr}...`);
 
-    const gas = await this.estimateGasWithFloor({
+    const { estimate, gas } = await this.estimateGasWithFloor({
       address: coreAddr,
       abi: OllaCoreWriteAbi,
       functionName: "rebalance",
       args: [],
+      floor: REBALANCE_GAS_FLOOR,
+      bufferBp: GAS_ESTIMATE_BUFFER_BP,
     });
+    console.log(`[TxExecutor] rebalance gas estimate: ${estimate} | gas limit: ${gas}`);
 
     const hash = await this.walletClient.writeContract({
       account: this.account,
@@ -165,7 +187,10 @@ export class TransactionExecutor {
     );
 
     if (receipt.status === "reverted") {
-      throw new Error(`rebalance() reverted in block ${receipt.blockNumber} (tx: ${hash})`);
+      throw new Error(
+        `rebalance() reverted in block ${receipt.blockNumber} (tx: ${hash})` +
+          this.getRevertGasHint(receipt.gasUsed, gas),
+      );
     }
 
     return hash;
@@ -180,7 +205,7 @@ export class TransactionExecutor {
     const addr = getAddress(attesterAddress);
     console.log(`[TxExecutor] Sending purgeFailedQueueEntry(${addr}) to ${stakingAddr}...`);
 
-    const gas = await this.estimateGasWithFloor({
+    const { gas } = await this.estimateGasWithFloor({
       address: stakingAddr,
       abi: StakingManagerWriteAbi,
       functionName: "purgeFailedQueueEntry",
@@ -220,7 +245,7 @@ export class TransactionExecutor {
     const addrs = attesterAddresses.map((a) => getAddress(a));
     console.log(`[TxExecutor] Sending refreshAttesterState([${addrs.join(", ")}]) to ${stakingAddr}...`);
 
-    const gas = await this.estimateGasWithFloor({
+    const { gas } = await this.estimateGasWithFloor({
       address: stakingAddr,
       abi: StakingManagerWriteAbi,
       functionName: "refreshAttesterState",
@@ -259,7 +284,7 @@ export class TransactionExecutor {
     const rollupAddr = getAddress(this.addresses.canonicalRollup);
     console.log(`[TxExecutor] Sending flushEntryQueue() to ${rollupAddr}...`);
 
-    const gas = await this.estimateGasWithFloor({
+    const { gas } = await this.estimateGasWithFloor({
       address: rollupAddr,
       abi: AztecRollupWriteAbi,
       functionName: "flushEntryQueue",
