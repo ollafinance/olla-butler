@@ -65,6 +65,9 @@ ETHEREUM_CHAIN_ID=11155111
 ETHEREUM_NODE_URL=https://your-rpc-endpoint.com
 OLLA_CORE_ADDRESS=0x...
 
+# Optional: public Olla operator/admin wallet balance monitoring (no private key)
+OLLA_OPERATOR_WALLET_ADDRESS=0x...
+
 # Optional: metrics auth
 METRICS_PORT=9470
 METRICS_BEARER_TOKEN=your-secret-token
@@ -114,6 +117,7 @@ All metrics are prefixed with `olla_butler_` and include a `network` label.
 | **Events** | `circuit_breaker_triggered_count`, `deposit_count`, `deposit_volume` |
 | **Derived** | `exchange_rate_change_bps`, `buffer_utilization_pct`, `capital_efficiency_pct`, `rewards_apr_pct`, `accounting_staleness_seconds` |
 | **Attester** | `rollup_attester_active_count`, `attester_slashing_loss`, `attester_cached_vs_rollup_drift` |
+| **Operator** | `operator_balance_eth`, `operator_balance_wei`, `operator_balance_last_updated_timestamp` |
 | **Health** | `scraper_up`, `scraper_consecutive_errors`, `rpc_reachable` |
 
 ### Alerting Rules

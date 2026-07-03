@@ -53,3 +53,5 @@ promtool check rules monitoring/alerts.yml
 All metrics are prefixed with `olla_butler_` and include a `network` label.
 
 Scraper health metrics additionally include a `scraper` label (e.g., `core`, `vault`, `staking`, `safety-module`, `withdrawal-queue`, `event-watcher`).
+
+Operator wallet balance metrics (`olla_butler_operator_balance_eth`, `olla_butler_operator_balance_wei`, `olla_butler_operator_balance_last_updated_timestamp`) are emitted only when `OLLA_OPERATOR_WALLET_ADDRESS` is configured. They include `network` and `address` labels and use the existing Ethereum RPC/public client; no private key is required.

@@ -25,6 +25,12 @@ export type ExecutorData = {
   lastUpdated: Date;
 };
 
+export type OperatorWalletData = {
+  address: string;
+  balance: bigint;
+  lastUpdated: Date;
+};
+
 export type NetworkState = {
   coreData: CoreData | null;
   vaultData: VaultData | null;
@@ -34,6 +40,7 @@ export type NetworkState = {
   eventData: EventData | null;
   attesterData: AttesterData | null;
   executorData: ExecutorData | null;
+  operatorWalletData: OperatorWalletData | null;
   previousExchangeRate: bigint | null;
   previousExchangeRateTimestamp: Date | null;
   previousReportTimestamp: bigint | null;
@@ -53,6 +60,7 @@ const getNetworkState = (network: string): NetworkState => {
       eventData: null,
       attesterData: null,
       executorData: null,
+      operatorWalletData: null,
       previousExchangeRate: null,
       previousExchangeRateTimestamp: null,
       previousReportTimestamp: null,
@@ -160,4 +168,14 @@ export const updateExecutorData = (network: string, data: ExecutorData) => {
 
 export const getExecutorData = (network: string): ExecutorData | null => {
   return getNetworkState(network).executorData;
+};
+
+// Operator wallet data
+export const updateOperatorWalletData = (network: string, data: OperatorWalletData) => {
+  const state = getNetworkState(network);
+  state.operatorWalletData = data;
+};
+
+export const getOperatorWalletData = (network: string): OperatorWalletData | null => {
+  return getNetworkState(network).operatorWalletData;
 };

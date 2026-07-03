@@ -27,6 +27,7 @@ import {
   createVaultEventListener,
   createOllaCoreEventListener,
   createSafetyModuleEventListener,
+  OperatorBalanceScraper,
 } from "./scrapers/index.js";
 import { initNetworkState, updateContractAddresses } from "./state/index.js";
 import { initAttesterRegistry } from "./state/attester-registry.js";
@@ -86,6 +87,18 @@ async function initializeNetwork(
 
   const eventWatcher = new EventWatcher(network, protocolClient.getPublicClient(), addresses);
   scraperManager.register(eventWatcher, 12_000); // 12s — near-realtime event monitoring
+
+  if (config.OLLA_OPERATOR_WALLET_ADDRESS) {
+    console.log(`[${network}] Registering public operator wallet balance scraper: ${config.OLLA_OPERATOR_WALLET_ADDRESS}`);
+    const operatorBalanceScraper = new OperatorBalanceScraper(
+      network,
+      protocolClient.getPublicClient(),
+      config.OLLA_OPERATOR_WALLET_ADDRESS,
+    );
+    scraperManager.register(operatorBalanceScraper, 5 * 60_000); // 5 min
+  } else {
+    console.log(`[${network}] Operator wallet balance disabled (OLLA_OPERATOR_WALLET_ADDRESS not set)`);
+  }
 
   // Attester monitoring (opt-in via ATTESTER_SCAN_START_BLOCK)
   if (config.ATTESTER_SCAN_START_BLOCK !== undefined) {
