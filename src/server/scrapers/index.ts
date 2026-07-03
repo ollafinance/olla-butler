@@ -18,4 +18,3 @@ export { createRollupEventListener } from "./rollup-event-listener.js";
 export { createVaultEventListener } from "./vault-event-listener.js";
 export { createOllaCoreEventListener } from "./olla-core-event-listener.js";
 export { createSafetyModuleEventListener } from "./safety-module-event-listener.js";
-export { OperatorBalanceScraper } from "./operator-balance-scraper.js";

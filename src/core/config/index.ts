@@ -77,11 +77,6 @@ function buildConfig(network: string) {
       z.string().startsWith("0x").length(42),
       process.env.OLLA_CORE_ADDRESS,
     ),
-    OLLA_OPERATOR_WALLET_ADDRESS: parseConfigField(
-      "OLLA_OPERATOR_WALLET_ADDRESS",
-      z.string().startsWith("0x").length(42).optional(),
-      process.env.OLLA_OPERATOR_WALLET_ADDRESS || undefined,
-    ),
     METRICS_BEARER_TOKEN: parseConfigField(
       "METRICS_BEARER_TOKEN",
       z.string().optional(),
