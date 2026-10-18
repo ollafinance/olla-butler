@@ -19,7 +19,7 @@ import { createTransport, SUPPORTED_CHAINS } from "../../core/components/transpo
 import { OllaCoreWriteAbi, StakingManagerWriteAbi, AztecRollupWriteAbi } from "../../types/write-abis.js";
 import { OllaCoreAbi, OllaVaultAbi, StakingManagerAbi } from "../../types/olla-abis.js";
 import { getMeter } from "../metrics/registry.js";
-import type { ContractAddresses } from "../../types/index.js";
+import { RebalanceStep, type ContractAddresses } from "../../types/index.js";
 
 /**
  * Minimum gas limit for all transactions.
@@ -355,7 +355,30 @@ export class TransactionExecutor {
           return this.rejectRebalance(`canStake RPC failed at gas ${candidate}: ${String(error)}`);
         }
       }
-      if (stakedAmount > 0n || ((rewardsDelta > 0n || finalizedAmount > 0n) && !stakeStillActionable)) {
+
+      // StakeSurplus completion: when remaining staking work is exhausted — i.e. canStake(effective
+      // amount) is false, covering dust/no keys and a zero spendable amount — the contract clears
+      // remaining and advances to Done before the gas-gated staking branch, returning an all-zero
+      // economic tuple. That all-zero output is a real completion, not a lack of work — permit it.
+      // readRebalanceContext already sets `amount` to stored stakeRemaining when nonzero, otherwise
+      // the net spendable buffer, and `before.canStake` tests that effective amount. Stored zero alone
+      // is NOT sufficient: OllaCore recomputes freshStakeRemaining from the buffer and, if actionable,
+      // the call must stake, so an all-zero outcome there is false progress.
+      // Scoped to StakeSurplus: earlier states can return all-zero at gas gates without completing,
+      // and Done can be a fresh cycle, so all-zero there stays rejected unless economic progress
+      // is returned.
+      const stakeSurplusCompletion =
+        before.progress.step === RebalanceStep.StakeSurplus &&
+        stakedAmount === 0n &&
+        rewardsDelta === 0n &&
+        finalizedAmount === 0n &&
+        before.canStake === false;
+
+      if (
+        stakedAmount > 0n ||
+        ((rewardsDelta > 0n || finalizedAmount > 0n) && !stakeStillActionable) ||
+        stakeSurplusCompletion
+      ) {
         selected = { gas: candidate, outcome: result };
         break;
       }
@@ -380,7 +403,17 @@ export class TransactionExecutor {
         before.amount !== after.amount || before.canStake !== after.canStake) {
       return this.rejectRebalance("RPC context changed during simulation (state disagreement)");
     }
-    if (selected.outcome[2] === 0n) {
+    const stakeSurplusCompletion =
+      before.progress.step === RebalanceStep.StakeSurplus &&
+      selected.outcome[0] === 0n &&
+      selected.outcome[1] === 0n &&
+      selected.outcome[2] === 0n &&
+      before.canStake === false;
+
+    // StakeSurplus completion is safe by contract semantics (remaining work not actionable), so a
+    // post-simulation canStake on the spendable buffer is not the contract's decision criterion and
+    // must not falsely reject it. Every other all-zero outcome still fails closed here.
+    if (selected.outcome[2] === 0n && !stakeSurplusCompletion) {
       let canStakeAfter: boolean;
       try {
         canStakeAfter = await this.canStake(

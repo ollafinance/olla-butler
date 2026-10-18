@@ -142,6 +142,44 @@ describe("rebalance semantic gas gate", () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("no transaction sent"));
   });
 
+  it("completes StakeSurplus on dust when canStake(residual) is false", async () => {
+    // stakeRemaining is dust (1 wei), canStake(1) == false, simulation returns all-zero but the
+    // contract advances StakeSurplus -> Done. One simulation, one send, no stake.
+    const t = setup([zero], 750_000n, 0n, 50n);
+    t.progress.stakeRemaining = 1n;
+    await t.executor.rebalance();
+    expect(t.simulateContract).toHaveBeenCalledTimes(1);
+    expect(t.writeContract).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ gas: 975_000n }));
+    expect(t.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects stored stakeRemaining=0 when the net buffer is still actionable", async () => {
+    // stored stakeRemaining is zero, so readRebalanceContext falls back to net spendable buffer
+    // (100 - 0 = 100) and canStake(100) == true. The contract would stake, so an all-zero outcome
+    // is false progress: reject all candidates and do not broadcast.
+    const t = setup([zero, zero, zero, zero], 13_000_000n, 0n, 50n);
+    t.progress.stakeRemaining = 0n;
+    await expect(t.executor.rebalance()).rejects.toThrow("no semantically productive gas candidate");
+    expect(t.simulateContract).toHaveBeenCalledTimes(4);
+    expect(t.writeContract).not.toHaveBeenCalled();
+    expect(t.waitForTransactionReceipt).not.toHaveBeenCalled();
+  });
+
+  it("completes StakeSurplus when no keys are configured (canStake always false)", async () => {
+    // canStake returns false for any amount (no keys). stakeRemaining is nonzero but not actionable,
+    // so the all-zero simulation is the StakeSurplus -> Done completion.
+    const t = setup([zero], 13_000_000n, 0n, 50n);
+    const original = t.readContract.getMockImplementation()!;
+    t.readContract.mockImplementation((request: { functionName: string; args?: bigint[] }) => {
+      if (request.functionName === "canStake") return Promise.resolve(false);
+      return original(request);
+    });
+    await t.executor.rebalance();
+    expect(t.simulateContract).toHaveBeenCalledTimes(1);
+    expect(t.writeContract).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ gas: TX_GAS_CAP }));
+    expect(t.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
+  });
+
   it("fails closed on simulation RPC failure or invalid return tuple", async () => {
     const failed = setup([]);
     failed.simulateContract.mockRejectedValueOnce(new Error("RPC disagreement"));
