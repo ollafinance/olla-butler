@@ -28,6 +28,68 @@ const REBALANCE_GAS_FLOOR = 750_000n;
 const GAS_ESTIMATE_BUFFER_BP = 13_000n;
 const BP_DENOMINATOR = 10_000n;
 
+/**
+ * EIP-7825 transaction gas cap: 2^24 = 16,777,216 gas.
+ * Enforced on Ethereum mainnet and Sepolia; local Foundry (31337) is intentionally uncapped.
+ */
+export const TX_GAS_CAP = 16_777_216n;
+
+/** Chain IDs subject to the EIP-7825 gas cap. */
+export const GAS_CAPPED_CHAIN_IDS: readonly number[] = [1, 11155111];
+
+export function isGasCappedChain(chainId: number): boolean {
+  return GAS_CAPPED_CHAIN_IDS.includes(chainId);
+}
+
+/**
+ * Result of the pure gas-limit calculation. Operations apply in order:
+ * ceiling-rounded buffer (when configured) -> max with floor -> min with chain cap.
+ */
+export interface GasLimitResult {
+  /** Raw gas estimate returned by the RPC. */
+  estimate: bigint;
+  /** Estimate after the ceiling-rounded buffer (or the raw estimate when no buffer is configured). */
+  buffered: bigint;
+  /** Buffered estimate raised to the floor: max(buffered, floor). */
+  floored: bigint;
+  /** Whether the chain gas cap was applied. */
+  capped: boolean;
+  /** Chain gas cap when the chain is capped, otherwise undefined. */
+  cap: bigint | undefined;
+  /** Final gas limit sent with the transaction. */
+  gas: bigint;
+}
+
+/**
+ * Pure gas-limit calculation, isolated so exact behavior (floor, buffer, cap) can be tested
+ * without a wallet client or RPC.
+ *
+ * @param estimate - Raw gas estimate from eth_estimateGas.
+ * @param floor - Minimum gas limit (e.g. GAS_FLOOR or REBALANCE_GAS_FLOOR).
+ * @param bufferBp - Optional ceiling-rounded buffer in basis points (e.g. 13,000bp = +30%).
+ * @param chainId - Chain ID of the transaction; determines whether TX_GAS_CAP applies.
+ */
+export function calculateGasLimit(args: {
+  estimate: bigint;
+  floor: bigint;
+  bufferBp?: bigint;
+  chainId: number;
+}): GasLimitResult {
+  const { estimate, floor, bufferBp, chainId } = args;
+  const buffered = bufferBp
+    ? (estimate * bufferBp + BP_DENOMINATOR - 1n) / BP_DENOMINATOR
+    : estimate;
+  const floored = buffered > floor ? buffered : floor;
+  const cap = isGasCappedChain(chainId) ? TX_GAS_CAP : undefined;
+  let gas = floored;
+  let capped = false;
+  if (cap !== undefined && gas > cap) {
+    gas = cap;
+    capped = true;
+  }
+  return { estimate, buffered, floored, capped, cap, gas };
+}
+
 export interface TransactionExecutorConfig {
   rpcUrl: string;
   chainId: number;
@@ -97,12 +159,21 @@ export class TransactionExecutor {
       account: this.account,
       ...contractArgs,
     });
-    const bufferedEstimate = bufferBp
-      ? (estimate * bufferBp + BP_DENOMINATOR - 1n) / BP_DENOMINATOR
-      : estimate;
+    const { gas, capped, floored, cap } = calculateGasLimit({
+      estimate,
+      floor,
+      ...(bufferBp !== undefined ? { bufferBp } : {}),
+      chainId: this.chain.id,
+    });
+    if (capped) {
+      console.log(
+        `[TxExecutor] Gas limit clamped by EIP-7825 cap (chain ${this.chain.id}): ` +
+          `selected ${floored} > cap ${cap}; using ${gas}`,
+      );
+    }
     return {
       estimate,
-      gas: bufferedEstimate > floor ? bufferedEstimate : floor,
+      gas,
     };
   }
 
