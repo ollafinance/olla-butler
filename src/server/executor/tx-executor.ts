@@ -13,9 +13,12 @@ import {
   type Chain,
   type Account,
 } from "viem";
+import type { Counter } from "@opentelemetry/api";
 import { privateKeyToAccount } from "viem/accounts";
 import { createTransport, SUPPORTED_CHAINS } from "../../core/components/transport.js";
 import { OllaCoreWriteAbi, StakingManagerWriteAbi, AztecRollupWriteAbi } from "../../types/write-abis.js";
+import { OllaCoreAbi, OllaVaultAbi, StakingManagerAbi } from "../../types/olla-abis.js";
+import { getMeter } from "../metrics/registry.js";
 import type { ContractAddresses } from "../../types/index.js";
 
 /**
@@ -27,6 +30,35 @@ const GAS_FLOOR = 500_000n;
 const REBALANCE_GAS_FLOOR = 750_000n;
 const GAS_ESTIMATE_BUFFER_BP = 13_000n;
 const BP_DENOMINATOR = 10_000n;
+let rebalanceRejectionCounter: Counter | undefined;
+
+function spendable(buffer: bigint, pending: bigint): bigint {
+  return buffer > pending ? buffer - pending : 0n;
+}
+
+function postFinalizationSpendable(buffer: bigint, pending: bigint, finalized: bigint): bigint {
+  const simulatedPending = pending > finalized ? pending - finalized : 0n;
+  return spendable(buffer, simulatedPending);
+}
+
+/** At most four eth_call simulations, including the original policy limit. */
+function rebalanceGasCandidates(estimate: bigint, preferred: bigint): bigint[] {
+  const candidates = [preferred];
+  // These are policy-derived limits, never scraped gas snapshots. Lower gas can change
+  // hasGasLeft() branching, so neither gas nor economic progress is assumed monotonic.
+  for (const [numerator, denominator] of [[1n, 1n], [3n, 4n], [1n, 2n]] as const) {
+    const raw = estimate * numerator / denominator;
+    const lower = raw > REBALANCE_GAS_FLOOR ? raw : REBALANCE_GAS_FLOOR;
+    if (lower < preferred && !candidates.includes(lower)) candidates.push(lower);
+  }
+  return candidates;
+}
+
+type RebalanceOutcome = readonly [bigint, bigint, bigint, bigint];
+
+function isRebalanceOutcome(value: unknown): value is RebalanceOutcome {
+  return Array.isArray(value) && value.length === 4 && value.every((item) => typeof item === "bigint" && item >= 0n);
+}
 
 /**
  * EIP-7825 transaction gas cap: 2^24 = 16,777,216 gas.
@@ -184,6 +216,40 @@ export class TransactionExecutor {
     return "";
   }
 
+  private rejectRebalance(reason: string): never {
+    console.error(`[TxExecutor] rebalance simulation safety gate: ${reason}; no transaction sent`);
+    try {
+      rebalanceRejectionCounter ??= getMeter().createCounter("olla-butler_rebalance_simulation_rejected_total", {
+        description: "Rebalance attempts blocked before broadcast by the simulation safety gate",
+      });
+      rebalanceRejectionCounter.add(1);
+    } catch (error) {
+      // Safety must not depend on metrics startup order.
+      console.error("[TxExecutor] Could not record rebalance rejection metric:", error);
+    }
+    throw new Error(`rebalance simulation safety gate: ${reason}; no transaction sent`);
+  }
+
+  private async readRebalanceContext(coreAddr: Address) {
+    const [progress, buffer, pending] = await Promise.all([
+      this.publicClient.readContract({ address: coreAddr, abi: OllaCoreAbi, functionName: "rebalanceProgress" }),
+      this.publicClient.readContract({ address: getAddress(this.addresses.vault), abi: OllaVaultAbi, functionName: "bufferedAssets" }),
+      this.publicClient.readContract({ address: getAddress(this.addresses.vault), abi: OllaVaultAbi, functionName: "pendingWithdrawalAssets" }),
+    ]);
+    const amount = progress.stakeRemaining > 0n ? progress.stakeRemaining : spendable(buffer, pending);
+    const canStake = await this.canStake(amount);
+    return { progress, buffer, pending, amount, canStake };
+  }
+
+  private async canStake(amount: bigint): Promise<boolean> {
+    return this.publicClient.readContract({
+      address: getAddress(this.addresses.stakingManager),
+      abi: StakingManagerAbi,
+      functionName: "canStake",
+      args: [amount],
+    });
+  }
+
   /**
    * Calls OllaCore.updateAccounting()
    */
@@ -230,15 +296,102 @@ export class TransactionExecutor {
     const coreAddr = getAddress(this.addresses.core);
     console.log(`[TxExecutor] Sending rebalance() to ${coreAddr}...`);
 
-    const { estimate, gas } = await this.estimateGasWithFloor({
-      address: coreAddr,
-      abi: OllaCoreWriteAbi,
-      functionName: "rebalance",
-      args: [],
-      floor: REBALANCE_GAS_FLOOR,
-      bufferBp: GAS_ESTIMATE_BUFFER_BP,
-    });
+    let estimate: bigint;
+    let gas: bigint;
+    try {
+      ({ estimate, gas } = await this.estimateGasWithFloor({
+        address: coreAddr,
+        abi: OllaCoreWriteAbi,
+        functionName: "rebalance",
+        args: [],
+        floor: REBALANCE_GAS_FLOOR,
+        bufferBp: GAS_ESTIMATE_BUFFER_BP,
+      }));
+    } catch (error) {
+      return this.rejectRebalance(`gas estimate RPC failed: ${String(error)}`);
+    }
     console.log(`[TxExecutor] rebalance gas estimate: ${estimate} | gas limit: ${gas}`);
+
+    let before: Awaited<ReturnType<TransactionExecutor["readRebalanceContext"]>>;
+    try {
+      before = await this.readRebalanceContext(coreAddr);
+    } catch (error) {
+      return this.rejectRebalance(`context RPC failed: ${String(error)}`);
+    }
+
+    let selected: { gas: bigint; outcome: RebalanceOutcome } | undefined;
+    for (const candidate of rebalanceGasCandidates(estimate, gas)) {
+      let result: unknown;
+      try {
+        const simulation = await this.publicClient.simulateContract({
+          account: this.account,
+          address: coreAddr,
+          abi: OllaCoreWriteAbi,
+          functionName: "rebalance",
+          args: [],
+          gas: candidate,
+        });
+        result = simulation.result;
+      } catch (error) {
+        return this.rejectRebalance(`simulation RPC failed at gas ${candidate}: ${String(error)}`);
+      }
+      if (!isRebalanceOutcome(result)) {
+        return this.rejectRebalance(`invalid rebalance return tuple at gas ${candidate}`);
+      }
+      const [rewardsDelta, finalizedAmount, stakedAmount, resultingBuffer] = result;
+      console.log(
+        `[TxExecutor] rebalance simulation gas=${candidate}: rewards=${rewardsDelta} ` +
+        `finalized=${finalizedAmount} staked=${stakedAmount} buffer=${resultingBuffer}`,
+      );
+      // A resulting buffer is only a balance, not proof of progress. For rewards
+      // or finalization alone, check whether staking remains possible afterwards.
+      let stakeStillActionable = false;
+      if (stakedAmount === 0n && (rewardsDelta > 0n || finalizedAmount > 0n)) {
+        try {
+          stakeStillActionable = await this.canStake(
+            postFinalizationSpendable(resultingBuffer, before.pending, finalizedAmount),
+          );
+        } catch (error) {
+          return this.rejectRebalance(`canStake RPC failed at gas ${candidate}: ${String(error)}`);
+        }
+      }
+      if (stakedAmount > 0n || ((rewardsDelta > 0n || finalizedAmount > 0n) && !stakeStillActionable)) {
+        selected = { gas: candidate, outcome: result };
+        break;
+      }
+      console.warn(
+        `[TxExecutor] Rejecting nonproductive rebalance at gas ${candidate} ` +
+        `(step=${before.progress.step}, stakeRemaining=${before.progress.stakeRemaining}, ` +
+        `canStake=${before.canStake}, stakeStillActionable=${stakeStillActionable})`,
+      );
+    }
+    if (!selected) return this.rejectRebalance("no semantically productive gas candidate");
+
+    let after: typeof before;
+    try {
+      after = await this.readRebalanceContext(coreAddr);
+    } catch (error) {
+      return this.rejectRebalance(`post-simulation context RPC failed: ${String(error)}`);
+    }
+    if (before.progress.step !== after.progress.step ||
+        before.progress.stakeRemaining !== after.progress.stakeRemaining ||
+        before.progress.unstakeRemaining !== after.progress.unstakeRemaining ||
+        before.buffer !== after.buffer || before.pending !== after.pending ||
+        before.amount !== after.amount || before.canStake !== after.canStake) {
+      return this.rejectRebalance("RPC context changed during simulation (state disagreement)");
+    }
+    if (selected.outcome[2] === 0n) {
+      let canStakeAfter: boolean;
+      try {
+        canStakeAfter = await this.canStake(
+          postFinalizationSpendable(selected.outcome[3], after.pending, selected.outcome[1]),
+        );
+      } catch (error) {
+        return this.rejectRebalance(`post-simulation canStake RPC failed: ${String(error)}`);
+      }
+      if (canStakeAfter) return this.rejectRebalance("post-simulation canStake disagrees with selected outcome");
+    }
+    console.log(`[TxExecutor] Selected rebalance gas ${selected.gas} with simulated outcome ${selected.outcome.join(",")}`);
 
     const hash = await this.walletClient.writeContract({
       account: this.account,
@@ -247,7 +400,7 @@ export class TransactionExecutor {
       abi: OllaCoreWriteAbi,
       functionName: "rebalance",
       args: [],
-      gas,
+      gas: selected.gas,
     });
     console.log(`[TxExecutor] rebalance tx sent: ${hash}`);
 
@@ -260,7 +413,7 @@ export class TransactionExecutor {
     if (receipt.status === "reverted") {
       throw new Error(
         `rebalance() reverted in block ${receipt.blockNumber} (tx: ${hash})` +
-          this.getRevertGasHint(receipt.gasUsed, gas),
+          this.getRevertGasHint(receipt.gasUsed, selected.gas),
       );
     }
 

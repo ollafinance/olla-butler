@@ -106,6 +106,7 @@ export const OllaVaultAbi = [
 ] as const;
 
 export const StakingManagerAbi = [
+  { type: "function", name: "canStake", inputs: [{ name: "amount", type: "uint256" }], outputs: [{ type: "bool" }], stateMutability: "view" },
   { type: "function", name: "totalStaked", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "pendingUnstakes", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },
   { type: "function", name: "getActivatedAttesterCount", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" },

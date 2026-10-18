@@ -15,7 +15,12 @@ export const OllaCoreWriteAbi = [
     type: "function",
     name: "rebalance",
     inputs: [],
-    outputs: [],
+    outputs: [
+      { name: "rewardsDelta", type: "uint256" },
+      { name: "finalizedAmount", type: "uint256" },
+      { name: "stakedAmount", type: "uint256" },
+      { name: "resultingBuffer", type: "uint256" },
+    ],
     stateMutability: "nonpayable",
   },
   {
