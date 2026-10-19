@@ -1,4 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  BaseError,
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
+  HttpRequestError,
+  TimeoutError,
+  type Address,
+} from "viem";
 import { TransactionExecutor, TX_GAS_CAP } from "../tx-executor.js";
 import { OllaCoreWriteAbi } from "../../../types/write-abis.js";
 import { RebalanceStep, type ContractAddresses } from "../../../types/index.js";
@@ -9,6 +17,23 @@ const stakingManager = "0x0000000000000000000000000000000000000003";
 const hash = `0x${"a".repeat(64)}`;
 const zero = [0n, 0n, 0n, 100n] as const;
 const stake = [0n, 0n, 50n, 50n] as const;
+
+function deterministicRebalanceRevert(sender: Address): ContractFunctionExecutionError {
+  return new ContractFunctionExecutionError(
+    new ContractFunctionRevertedError({
+      abi: OllaCoreWriteAbi,
+      functionName: "rebalance",
+      message: "execution reverted",
+    }),
+    {
+      abi: OllaCoreWriteAbi,
+      args: [],
+      contractAddress: core,
+      functionName: "rebalance",
+      sender,
+    },
+  );
+}
 
 function setup(results: unknown[], estimate = 13_000_000n, pending = 0n, minimumStake = 50n) {
   const executor = new TransactionExecutor({
@@ -72,6 +97,31 @@ describe("rebalance semantic gas gate", () => {
       TX_GAS_CAP, 13_000_000n, 9_750_000n,
     ]);
     expect(t.writeContract).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ gas: 9_750_000n }));
+  });
+
+  it("continues after one deterministic EVM revert and sends a later productive candidate exactly once", async () => {
+    const t = setup([stake]);
+    t.simulateContract.mockRejectedValueOnce(deterministicRebalanceRevert(t.executor.getExecutorAddress()));
+
+    await t.executor.rebalance();
+
+    expect(t.simulateContract.mock.calls.map(([request]) => request.gas)).toEqual([
+      TX_GAS_CAP, 13_000_000n,
+    ]);
+    expect(t.writeContract).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ gas: 13_000_000n }));
+    expect(t.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("deterministic contract execution revert"));
+  });
+
+  it("rejects when every exact-gas candidate deterministically reverts without broadcasting", async () => {
+    const t = setup([]);
+    t.simulateContract.mockRejectedValue(deterministicRebalanceRevert(t.executor.getExecutorAddress()));
+
+    await expect(t.executor.rebalance()).rejects.toThrow("no semantically productive gas candidate");
+
+    expect(t.simulateContract).toHaveBeenCalledTimes(4);
+    expect(t.writeContract).not.toHaveBeenCalled();
+    expect(t.waitForTransactionReceipt).not.toHaveBeenCalled();
   });
 
   it("allows a useful partial amount when work remains resumable", async () => {
@@ -180,11 +230,47 @@ describe("rebalance semantic gas gate", () => {
     expect(t.waitForTransactionReceipt).toHaveBeenCalledTimes(1);
   });
 
-  it("fails closed on simulation RPC failure or invalid return tuple", async () => {
-    const failed = setup([]);
-    failed.simulateContract.mockRejectedValueOnce(new Error("RPC disagreement"));
-    await expect(failed.executor.rebalance()).rejects.toThrow("simulation RPC failed");
-    expect(failed.writeContract).not.toHaveBeenCalled();
+  it.each([
+    ["transport", () => new HttpRequestError({ url: "http://127.0.0.1:8545", details: "connection reset" })],
+    ["timeout", () => new TimeoutError({ url: "http://127.0.0.1:8545", body: { method: "eth_call" } })],
+    ["unrecognized", () => new Error("unrecognized simulation failure")],
+  ])("fails closed on a %s simulation error", async (_label, makeError) => {
+    const t = setup([]);
+    t.simulateContract.mockRejectedValueOnce(makeError());
+
+    await expect(t.executor.rebalance()).rejects.toThrow("simulation RPC failed");
+
+    expect(t.simulateContract).toHaveBeenCalledTimes(1);
+    expect(t.writeContract).not.toHaveBeenCalled();
+    expect(t.waitForTransactionReceipt).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on an ambiguous wrapper around a deterministic revert", async () => {
+    const t = setup([]);
+    const revert = new ContractFunctionRevertedError({
+      abi: OllaCoreWriteAbi,
+      functionName: "rebalance",
+      message: "execution reverted",
+    });
+    const ambiguous = new ContractFunctionExecutionError(
+      new BaseError("ambiguous intermediary", { cause: revert }),
+      {
+        abi: OllaCoreWriteAbi,
+        args: [],
+        contractAddress: core,
+        functionName: "rebalance",
+        sender: t.executor.getExecutorAddress(),
+      },
+    );
+    t.simulateContract.mockRejectedValueOnce(ambiguous);
+
+    await expect(t.executor.rebalance()).rejects.toThrow("simulation RPC failed");
+
+    expect(t.simulateContract).toHaveBeenCalledTimes(1);
+    expect(t.writeContract).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on a malformed return tuple", async () => {
     const malformed = setup([[1n, 2n]]);
     await expect(malformed.executor.rebalance()).rejects.toThrow("invalid rebalance return tuple");
     expect(malformed.writeContract).not.toHaveBeenCalled();

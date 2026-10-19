@@ -4,6 +4,8 @@
  */
 
 import {
+  ContractFunctionExecutionError,
+  ContractFunctionRevertedError,
   createWalletClient,
   createPublicClient,
   getAddress,
@@ -58,6 +60,23 @@ type RebalanceOutcome = readonly [bigint, bigint, bigint, bigint];
 
 function isRebalanceOutcome(value: unknown): value is RebalanceOutcome {
   return Array.isArray(value) && value.length === 4 && value.every((item) => typeof item === "bigint" && item >= 0n);
+}
+
+/**
+ * viem's simulateContract wraps a node-recognized EVM revert in exactly this pair.
+ * Keep the check deliberately narrow: walking arbitrary cause chains could mistake a
+ * transport/RPC wrapper containing stale revert metadata for a deterministic result.
+ */
+function isDeterministicRebalanceRevert(
+  error: unknown,
+  coreAddr: Address,
+  executorAddress: Address,
+): error is ContractFunctionExecutionError {
+  return error instanceof ContractFunctionExecutionError &&
+    error.cause instanceof ContractFunctionRevertedError &&
+    error.functionName === "rebalance" &&
+    error.contractAddress === coreAddr &&
+    error.sender === executorAddress;
 }
 
 /**
@@ -333,6 +352,13 @@ export class TransactionExecutor {
         });
         result = simulation.result;
       } catch (error) {
+        if (isDeterministicRebalanceRevert(error, coreAddr, this.executorAddress)) {
+          console.warn(
+            `[TxExecutor] Rejecting rebalance candidate at gas ${candidate}: ` +
+            `deterministic contract execution revert (${error.cause.shortMessage})`,
+          );
+          continue;
+        }
         return this.rejectRebalance(`simulation RPC failed at gas ${candidate}: ${String(error)}`);
       }
       if (!isRebalanceOutcome(result)) {
