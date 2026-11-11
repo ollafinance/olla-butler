@@ -46,6 +46,7 @@ export {
   AztecRollupRegistryAbi,
   AztecRollupAbi,
   AztecRollupEventAbi,
+  AztecGovernanceAbi,
 } from "./aztec-abis.js";
 
 export {

@@ -17,6 +17,7 @@ import {
   ERC20Abi,
   AztecRollupRegistryAbi,
   AztecRollupAbi,
+  AztecGovernanceAbi,
   AztecAttesterStatus,
   type ContractAddresses,
   type CoreData,
@@ -27,6 +28,7 @@ import {
   type AttesterState,
   RebalanceStep,
 } from "../../types/index.js";
+import { isExitFinalizable, type GovernanceWithdrawal } from "./exit-readiness.js";
 
 type OllaCoreContract = GetContractReturnType<typeof OllaCoreAbi, PublicClient>;
 type OllaVaultContract = GetContractReturnType<typeof OllaVaultAbi, PublicClient>;
@@ -36,6 +38,7 @@ type SafetyModuleContract = GetContractReturnType<typeof SafetyModuleAbi, Public
 type ERC20Contract = GetContractReturnType<typeof ERC20Abi, PublicClient>;
 type AztecRollupRegistryContract = GetContractReturnType<typeof AztecRollupRegistryAbi, PublicClient>;
 type AztecRollupContract = GetContractReturnType<typeof AztecRollupAbi, PublicClient>;
+type AztecGovernanceContract = GetContractReturnType<typeof AztecGovernanceAbi, PublicClient>;
 
 export interface OllaProtocolClientConfig {
   rpcUrl: string;
@@ -58,6 +61,7 @@ export class OllaProtocolClient {
   private safetyModuleContract!: SafetyModuleContract;
   private stAztecContract!: ERC20Contract;
   private rollupRegistryContract!: AztecRollupRegistryContract;
+  private governanceContract!: AztecGovernanceContract;
   private canonicalRollupContract!: AztecRollupContract;
 
   private addresses: ContractAddresses | null = null;
@@ -124,6 +128,14 @@ export class OllaProtocolClient {
     this.rollupRegistryContract = getContract({
       address: getAddress(rollupRegistryAddr),
       abi: AztecRollupRegistryAbi,
+      client: this.client,
+    });
+
+    // Governance owns the withdrawal locks that gate exit finalization.
+    const governanceAddr = await this.rollupRegistryContract.read.getGovernance();
+    this.governanceContract = getContract({
+      address: getAddress(governanceAddr),
+      abi: AztecGovernanceAbi,
       client: this.client,
     });
 
@@ -414,8 +426,8 @@ export class OllaProtocolClient {
   async scrapeAttesterStates(attesterAddresses: string[]): Promise<AttesterState[]> {
     const now = BigInt(Math.floor(Date.now() / 1000));
 
-    const results = await Promise.all(
-      attesterAddresses.map(async (addr): Promise<AttesterState> => {
+    const views = await Promise.all(
+      attesterAddresses.map(async (addr) => {
         const address = getAddress(addr) as Address;
         let view = await this.canonicalRollupContract.read.getAttesterView([address]);
 
@@ -430,21 +442,50 @@ export class OllaProtocolClient {
           }
         }
 
-        return {
-          address: addr.toLowerCase(),
-          status: view.status as AztecAttesterStatus,
-          effectiveBalance: view.effectiveBalance,
-          exit: {
-            exists: view.exit.exists,
-            amount: view.exit.amount,
-            exitableAt: view.exit.exitableAt,
-            isExitable: view.exit.exists && view.exit.exitableAt <= now,
-          },
-        };
+        return { address, view };
       }),
     );
 
-    return results;
+    // Exit finalization needs BOTH the rollup exit delay and the governance
+    // withdrawal lock. Fetch each distinct withdrawal referenced by an exit
+    // whose rollup delay has elapsed; exits still inside the rollup delay
+    // cannot be finalized regardless of the governance state.
+    const withdrawalIds = new Set<bigint>();
+    for (const { view } of views) {
+      if (view.exit.exists && view.exit.exitableAt <= now) {
+        withdrawalIds.add(view.exit.withdrawalId);
+      }
+    }
+
+    const withdrawals = new Map<bigint, GovernanceWithdrawal>();
+    await Promise.all(
+      Array.from(withdrawalIds).map(async (withdrawalId) => {
+        withdrawals.set(
+          withdrawalId,
+          await this.governanceContract.read.getWithdrawal([withdrawalId]),
+        );
+      }),
+    );
+
+    return views.map(({ address, view }) => ({
+      address: address.toLowerCase(),
+      status: view.status as AztecAttesterStatus,
+      effectiveBalance: view.effectiveBalance,
+      exit: {
+        exists: view.exit.exists,
+        amount: view.exit.amount,
+        exitableAt: view.exit.exitableAt,
+        isExitable: isExitFinalizable({
+          exit: {
+            exists: view.exit.exists,
+            exitableAt: view.exit.exitableAt,
+            isRecipient: view.exit.isRecipient,
+          },
+          withdrawal: withdrawals.get(view.exit.withdrawalId),
+          nowSeconds: now,
+        }),
+      },
+    }));
   }
 
   /**

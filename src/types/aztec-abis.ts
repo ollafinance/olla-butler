@@ -32,6 +32,37 @@ export const AztecRollupRegistryAbi = [
     outputs: [{ type: "address" }],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "getGovernance",
+    inputs: [],
+    outputs: [{ type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
+
+/**
+ * Minimal Aztec governance ABI.
+ * Used to read the withdrawal record that gates exit finalization.
+ */
+export const AztecGovernanceAbi = [
+  {
+    type: "function",
+    name: "getWithdrawal",
+    inputs: [{ name: "_withdrawalId", type: "uint256" }],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { name: "amount", type: "uint256" },
+          { name: "unlocksAt", type: "uint256" },
+          { name: "recipient", type: "address" },
+          { name: "claimed", type: "bool" },
+        ],
+      },
+    ],
+    stateMutability: "view",
+  },
 ] as const;
 
 export const AztecRollupAbi = [
