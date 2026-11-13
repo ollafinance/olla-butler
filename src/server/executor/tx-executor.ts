@@ -8,7 +8,10 @@ import {
   ContractFunctionRevertedError,
   createWalletClient,
   createPublicClient,
+  decodeFunctionResult,
+  encodeFunctionData,
   getAddress,
+  numberToHex,
   type Address,
   type WalletClient,
   type PublicClient,
@@ -30,6 +33,7 @@ import { RebalanceStep, type ContractAddresses } from "../../types/index.js";
  */
 const GAS_FLOOR = 500_000n;
 const REBALANCE_GAS_FLOOR = 750_000n;
+const REBALANCE_PROGRESS_GAS = 100_000n;
 const GAS_ESTIMATE_BUFFER_BP = 13_000n;
 const BP_DENOMINATOR = 10_000n;
 let rebalanceRejectionCounter: Counter | undefined;
@@ -313,7 +317,7 @@ export class TransactionExecutor {
    */
   async rebalance(): Promise<string> {
     const coreAddr = getAddress(this.addresses.core);
-    console.log(`[TxExecutor] Sending rebalance() to ${coreAddr}...`);
+    console.log(`[TxExecutor] Evaluating rebalance() for ${coreAddr}...`);
 
     let estimate: bigint;
     let gas: bigint;
@@ -338,7 +342,7 @@ export class TransactionExecutor {
       return this.rejectRebalance(`context RPC failed: ${String(error)}`);
     }
 
-    let selected: { gas: bigint; outcome: RebalanceOutcome } | undefined;
+    let selected: { gas: bigint; outcome: RebalanceOutcome; stateBlock?: { number: bigint; hash: `0x${string}`; stakeAmount: bigint } } | undefined;
     for (const candidate of rebalanceGasCandidates(estimate, gas)) {
       let result: unknown;
       try {
@@ -390,9 +394,7 @@ export class TransactionExecutor {
       // the net spendable buffer, and `before.canStake` tests that effective amount. Stored zero alone
       // is NOT sufficient: OllaCore recomputes freshStakeRemaining from the buffer and, if actionable,
       // the call must stake, so an all-zero outcome there is false progress.
-      // Scoped to StakeSurplus: earlier states can return all-zero at gas gates without completing,
-      // and Done can be a fresh cycle, so all-zero there stays rejected unless economic progress
-      // is returned.
+      // Earlier states require independent post-state verification; Done is not a completion.
       const stakeSurplusCompletion =
         before.progress.step === RebalanceStep.StakeSurplus &&
         stakedAmount === 0n &&
@@ -400,12 +402,92 @@ export class TransactionExecutor {
         finalizedAmount === 0n &&
         before.canStake === false;
 
+      let stateOnly = false;
+      let stateBlock: { number: bigint; hash: `0x${string}`; stakeAmount: bigint } | undefined;
+      if (rewardsDelta === 0n && finalizedAmount === 0n && stakedAmount === 0n &&
+          (before.progress.step === RebalanceStep.FinalizeWithdrawals ||
+           before.progress.step === RebalanceStep.InitiateUnstake)) {
+        try {
+          const block = await this.publicClient.getBlock({ blockTag: "latest" });
+          if (block.number === null || block.hash === null) throw new Error("missing canonical block identity");
+          const progressData = encodeFunctionData({ abi: OllaCoreAbi, functionName: "rebalanceProgress" });
+          const rebalanceData = encodeFunctionData({ abi: OllaCoreWriteAbi, functionName: "rebalance" });
+          const blocks = await this.publicClient.request({
+            method: "eth_simulateV1",
+            params: [{
+              blockStateCalls: [{ calls: [
+                { from: this.executorAddress, to: coreAddr, data: progressData, gas: numberToHex(REBALANCE_PROGRESS_GAS) },
+                { from: this.executorAddress, to: coreAddr, data: rebalanceData, gas: numberToHex(candidate) },
+                { from: this.executorAddress, to: coreAddr, data: progressData, gas: numberToHex(REBALANCE_PROGRESS_GAS) },
+              ] }],
+              validation: false,
+              returnFullTransactions: true,
+            }, numberToHex(block.number)],
+          });
+          if (!Array.isArray(blocks) || blocks.length !== 1 || !Array.isArray(blocks[0]?.calls) ||
+              blocks[0].calls.length !== 3 || blocks[0].calls.some((call: unknown) => {
+                if (!call || typeof call !== "object") return true;
+                const item = call as { status?: unknown; error?: unknown; returnData?: unknown };
+                return item.status !== "0x1" || item.error !== undefined || typeof item.returnData !== "string";
+              })) {
+            throw new Error("invalid sequential simulation response");
+          }
+          // Geth's overall simulation gas cap can silently reduce a later call's gas.
+          // Verify the returned transaction's gas limit matches the requested candidate.
+          const transactions: unknown = blocks[0].transactions;
+          if (!Array.isArray(transactions) || transactions.length !== 3 ||
+              transactions.some((tx: unknown) => !tx || typeof tx !== "object" || Array.isArray(tx))) {
+            throw new Error("invalid sequential simulation transactions");
+          }
+          const tx = transactions[1] as { from?: unknown; to?: unknown; input?: unknown; gas?: unknown };
+          if (typeof tx.from !== "string" || tx.from.toLowerCase() !== this.executorAddress.toLowerCase() ||
+              typeof tx.to !== "string" || tx.to.toLowerCase() !== coreAddr.toLowerCase() ||
+              typeof tx.input !== "string" || tx.input.toLowerCase() !== rebalanceData.toLowerCase() ||
+              typeof tx.gas !== "string" || !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(tx.gas) ||
+              BigInt(tx.gas) !== candidate) {
+            throw new Error("sequential simulation transaction mismatch or gas clamp");
+          }
+          const [initialCall, rebalanceCall, finalCall] = blocks[0].calls;
+          const initial = decodeFunctionResult({ abi: OllaCoreAbi, functionName: "rebalanceProgress", data: initialCall!.returnData });
+          const simulated = decodeFunctionResult({ abi: OllaCoreWriteAbi, functionName: "rebalance", data: rebalanceCall!.returnData });
+          const final = decodeFunctionResult({ abi: OllaCoreAbi, functionName: "rebalanceProgress", data: finalCall!.returnData });
+          const validProgress = (progress: typeof initial) => progress &&
+            Number.isInteger(progress.step) && progress.step >= RebalanceStep.Harvest && progress.step <= RebalanceStep.Done &&
+            typeof progress.stakeRemaining === "bigint" && progress.stakeRemaining >= 0n &&
+            typeof progress.unstakeRemaining === "bigint" && progress.unstakeRemaining >= 0n;
+          if (!validProgress(initial) || !validProgress(final) || !isRebalanceOutcome(simulated) ||
+              simulated.some((value, index) => value !== result[index]) ||
+              initial.step !== before.progress.step || initial.stakeRemaining !== before.progress.stakeRemaining ||
+              initial.unstakeRemaining !== before.progress.unstakeRemaining) {
+            throw new Error("sequential simulation state or result disagreement");
+          }
+          const canonical = await this.publicClient.getBlock({ blockNumber: block.number });
+          const latest = await this.publicClient.getBlock({ blockTag: "latest" });
+          if (canonical.hash !== block.hash || latest.number !== block.number || latest.hash !== block.hash) {
+            throw new Error("sequential simulation block changed");
+          }
+          stateOnly = final.step > initial.step;
+          if (stateOnly) {
+            const amount = final.stakeRemaining > 0n
+              ? final.stakeRemaining
+              : postFinalizationSpendable(resultingBuffer, before.pending, finalizedAmount);
+            if (await this.canStake(amount)) stateOnly = false;
+            else {
+              stateBlock = { number: block.number, hash: block.hash, stakeAmount: amount };
+              console.log(`[TxExecutor] Accepted state-only rebalance transition ${initial.step} -> ${final.step} at gas ${candidate} (canStake(${amount})=false)`);
+            }
+          }
+        } catch (error) {
+          return this.rejectRebalance(`sequential simulation failed at gas ${candidate}: ${String(error)}`);
+        }
+      }
+
       if (
         stakedAmount > 0n ||
         ((rewardsDelta > 0n || finalizedAmount > 0n) && !stakeStillActionable) ||
-        stakeSurplusCompletion
+        stakeSurplusCompletion || stateOnly
       ) {
-        selected = { gas: candidate, outcome: result };
+        selected = { gas: candidate, outcome: result, ...(stateBlock ? { stateBlock } : {}) };
         break;
       }
       console.warn(
@@ -438,8 +520,8 @@ export class TransactionExecutor {
 
     // StakeSurplus completion is safe by contract semantics (remaining work not actionable), so a
     // post-simulation canStake on the spendable buffer is not the contract's decision criterion and
-    // must not falsely reject it. Every other all-zero outcome still fails closed here.
-    if (selected.outcome[2] === 0n && !stakeSurplusCompletion) {
+    // must not falsely reject it. State-only transitions repeat their exact effective-amount check below.
+    if (selected.outcome[2] === 0n && !stakeSurplusCompletion && !selected.stateBlock) {
       let canStakeAfter: boolean;
       try {
         canStakeAfter = await this.canStake(
@@ -449,6 +531,29 @@ export class TransactionExecutor {
         return this.rejectRebalance(`post-simulation canStake RPC failed: ${String(error)}`);
       }
       if (canStakeAfter) return this.rejectRebalance("post-simulation canStake disagrees with selected outcome");
+    }
+    if (selected.stateBlock) {
+      let canStakeAfter: boolean;
+      try {
+        canStakeAfter = await this.canStake(selected.stateBlock.stakeAmount);
+      } catch (error) {
+        return this.rejectRebalance(`post-simulation canStake RPC failed: ${String(error)}`);
+      }
+      if (canStakeAfter !== false) return this.rejectRebalance("post-simulation canStake disagrees with selected state transition");
+      let canonical: Awaited<ReturnType<PublicClient["getBlock"]>>;
+      let latest: Awaited<ReturnType<PublicClient["getBlock"]>>;
+      try {
+        [canonical, latest] = await Promise.all([
+          this.publicClient.getBlock({ blockNumber: selected.stateBlock.number }),
+          this.publicClient.getBlock({ blockTag: "latest" }),
+        ]);
+      } catch (error) {
+        return this.rejectRebalance(`sequential simulation freshness RPC failed: ${String(error)}`);
+      }
+      if (canonical.hash !== selected.stateBlock.hash || latest.number !== selected.stateBlock.number ||
+          latest.hash !== selected.stateBlock.hash) {
+        return this.rejectRebalance("sequential simulation block changed before broadcast");
+      }
     }
     console.log(`[TxExecutor] Selected rebalance gas ${selected.gas} with simulated outcome ${selected.outcome.join(",")}`);
 

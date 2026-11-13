@@ -85,6 +85,24 @@ Comma-separated RPC URLs are supported for automatic failover:
 ETHEREUM_NODE_URL=https://primary-rpc.com,https://fallback-rpc.com
 ```
 
+For automated rebalances, configure an RPC that supports `eth_simulateV1` with
+`returnFullTransactions`. When a withdrawal or unstake step returns no economic
+output, the executor uses this method to verify state-machine progress and the
+exact simulated gas limit before sending. The RPC's aggregate simulation gas
+limit must accommodate the rebalance candidate and two 100,000-gas progress reads.
+An unsupported method, insufficient simulation budget, or inconsistent response
+blocks that attempt without sending a transaction. Ensure fallback RPCs support
+the same capability, and check executor logs if a rebalance remains in progress.
+
+The optional historical mainnet regression test uses an archive RPC and does not
+send transactions:
+
+```bash
+RUN_REBALANCE_MAINNET_INTEGRATION=1 npx vitest run src/server/executor/__tests__/rebalance-mainnet.integration.test.ts
+```
+
+Set `REBALANCE_MAINNET_RPC_URL` to use a different archive RPC.
+
 ### Run
 
 ```bash
